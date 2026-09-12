@@ -46,7 +46,7 @@ Not in scoring (do not optimize for these unless they are an input to a scored c
 
 ## Lessons from prior drafts
 
-These are product constraints, not anecdotes.
+These are product constraints, not anecdotes. Final rotisserie standings for this league (2021–2026): [`historical-winners.md`](historical-winners.md).
 
 1. **Injury concentration.** Historically, a ruined season is usually a top-3 draft pick injured for most of the year. Do not build a plan that only works if the first three picks stay healthy. Surface injury risk and avoid concentrating the season on one or two stars.
 
