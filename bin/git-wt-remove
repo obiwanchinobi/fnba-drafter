@@ -1,0 +1,339 @@
+#!/bin/bash
+
+# Remove an FNBA worktree created by fnba-cli wt / bin/git-wt, and delete its
+# local branch.
+#
+# Usage:
+#   fnba-cli wt-remove                         # interactive: pick a worktree
+#   fnba-cli wt-remove <branch-name>           # confirm, then remove + delete branch
+#   fnba-cli wt-remove <branch-name> -y        # skip confirmation
+#   fnba-cli wt-remove <branch-name> --force   # pass --force to git worktree remove
+#                                              # (needed when the worktree is dirty)
+#   bin/git-wt-remove ...                      # same, invoked directly
+#
+# Interactive mode also offers c) cleanup: remove every worktree whose last
+# commit is older than N months (default 3). Dirty/unmerged candidates are
+# flagged in the listing for review before the single confirm.
+#
+# Refuses to remove the primary worktree, and refuses if you're cd'd inside
+# the worktree being removed. --force fallback rm -rf only applies to paths
+# under ../fnba-drafter-worktrees/.
+
+set -e
+
+BIN_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=lib/fnba-wt-common.sh
+. "${BIN_DIR}/lib/fnba-wt-common.sh"
+
+fnba_require_git
+fnba_require_repo
+
+usage() {
+    awk 'NR > 2 { if ($0 !~ /^#/) exit; print }' "$0" | sed 's/^# \{0,1\}//'
+}
+
+SKIP_CONFIRM=false
+FORCE=false
+POSITIONAL_ARGS=()
+for arg in "$@"; do
+    case "$arg" in
+        -y|--yes) SKIP_CONFIRM=true ;;
+        --force) FORCE=true ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        -*)
+            fnba_die "Unknown argument: ${arg}"
+            ;;
+        *) POSITIONAL_ARGS+=("$arg") ;;
+    esac
+done
+set -- "${POSITIONAL_ARGS[@]}"
+
+do_removal() {
+    local remove_ok=false
+    local worktree_remove_rc=0
+
+    set +e
+    if [ "$FORCE" = true ]; then
+        git worktree remove --force --force "$WORKTREE_PATH"
+        worktree_remove_rc=$?
+    else
+        git worktree remove "$WORKTREE_PATH"
+        worktree_remove_rc=$?
+    fi
+    set -e
+    [ "$worktree_remove_rc" -eq 0 ] && remove_ok=true
+
+    if [ "$remove_ok" != true ]; then
+        if [ "$FORCE" != true ]; then
+            echo -e "${RED}❌ git worktree remove failed (worktree may be dirty or in use).${NC}" >&2
+            echo -e "${YELLOW}Retry with --force to discard uncommitted files: fnba-cli wt-remove ${BRANCH_NAME} --force${NC}" >&2
+            return 1
+        fi
+
+        echo -e "${YELLOW}git worktree remove --force failed; completing cleanup manually...${NC}"
+        git worktree remove --force --force "$WORKTREE_PATH" >/dev/null 2>&1 || true
+        git worktree unlock "$WORKTREE_PATH" >/dev/null 2>&1 || true
+
+        local main_wt sandbox_parent
+        main_wt=$(fnba_primary_worktree)
+        sandbox_parent=$(dirname "$main_wt")
+        if [ -n "$WORKTREE_PATH" ] && [ "$WORKTREE_PATH" != "$main_wt" ] \
+            && fnba_path_under_worktrees_root "$WORKTREE_PATH" \
+            && [ "${WORKTREE_PATH#${sandbox_parent}/}" != "$WORKTREE_PATH" ]; then
+            [ -d "$WORKTREE_PATH" ] && rm -rf "$WORKTREE_PATH"
+        else
+            echo -e "${RED}❌ Refusing to rm -rf unexpected path ${WORKTREE_PATH}. Remove it by hand, then re-run.${NC}" >&2
+            return 1
+        fi
+        git worktree prune
+        if [ -d "$WORKTREE_PATH" ]; then
+            echo -e "${RED}❌ Could not fully remove ${WORKTREE_PATH} (a process may still hold files in it). Close it, then: rm -rf ${WORKTREE_PATH} && git worktree prune${NC}" >&2
+            return 1
+        fi
+    fi
+    echo -e "${GREEN}✅ Removed worktree ${WORKTREE_PATH}${NC}"
+
+    if git show-ref --verify --quiet "refs/heads/${BRANCH_NAME}"; then
+        if git branch -D "$BRANCH_NAME" >/dev/null 2>&1; then
+            echo -e "${GREEN}✅ Deleted branch ${BRANCH_NAME}${NC}"
+        else
+            echo -e "${RED}❌ Failed to delete branch ${BRANCH_NAME} (checked out elsewhere?). Retry: git branch -D ${BRANCH_NAME}${NC}" >&2
+            return 1
+        fi
+    fi
+    return 0
+}
+
+# Reads wt_paths/wt_branches/wt_status via bash dynamic scoping from pick_worktree.
+cleanup_by_age() {
+    local months
+    echo -en "${BLUE}Remove worktrees whose last commit is older than how many months? [3]: ${NC}"
+    read -r months
+    [ -z "$months" ] && months=3
+    if ! [[ "$months" =~ ^[0-9]+$ ]] || [ "$months" -lt 1 ]; then
+        fnba_die "Invalid month value: ${months}"
+    fi
+
+    local cutoff
+    cutoff=$(( $(date +%s) - months * 30 * 86400 ))
+
+    local primary_branch=""
+    local i
+    for i in "${!wt_paths[@]}"; do
+        [ "${wt_status[$i]}" = "primary" ] && primary_branch="${wt_branches[$i]}"
+    done
+
+    local -a old_paths=() old_branches=() old_ages=() old_marks=()
+    local tip age marks
+    for i in "${!wt_paths[@]}"; do
+        [ "${wt_status[$i]}" != "removable" ] && continue
+        tip=$(git for-each-ref --format='%(committerdate:unix)' "refs/heads/${wt_branches[$i]}")
+        [ -z "$tip" ] && continue
+        [ "$tip" -ge "$cutoff" ] && continue
+        age=$(git for-each-ref --format='%(committerdate:relative)' "refs/heads/${wt_branches[$i]}")
+        marks=""
+        [ -n "$(git -C "${wt_paths[$i]}" status --porcelain 2>/dev/null | head -1)" ] && marks+=" ${RED}(dirty)${NC}"
+        if [ -n "$primary_branch" ] && \
+            ! git merge-base --is-ancestor "refs/heads/${wt_branches[$i]}" "refs/heads/${primary_branch}" 2>/dev/null; then
+            marks+=" ${YELLOW}(unmerged)${NC}"
+        fi
+        old_paths+=("${wt_paths[$i]}")
+        old_branches+=("${wt_branches[$i]}")
+        old_ages+=("$age")
+        old_marks+=("$marks")
+    done
+
+    if [ "${#old_paths[@]}" -eq 0 ]; then
+        echo -e "${YELLOW}No removable worktrees with a last commit older than ${months} month(s).${NC}"
+        exit 0
+    fi
+
+    echo -e "${CYAN}Found ${#old_paths[@]} worktree(s) with no commits in the last ${months} month(s):${NC}"
+    for i in "${!old_paths[@]}"; do
+        echo -e "  ${old_branches[$i]}${old_marks[$i]}"
+        echo -e "     ${DIM}${old_paths[$i]/#$HOME/~}  —  last commit ${old_ages[$i]}${NC}"
+    done
+    echo ""
+    echo -e "Each will be: ${YELLOW}worktree removed (--force)${NC}, ${YELLOW}branch deleted${NC}."
+    echo -e "${DIM}(dirty) = uncommitted changes, (unmerged) = commits not in ${primary_branch:-main} — review before confirming.${NC}"
+    echo ""
+
+    echo -e "${BLUE}Proceed? [y/N]${NC}"
+    read -r ANSWER
+    if [[ ! "$ANSWER" =~ ^([Yy]|[Yy][Ee][Ss])$ ]]; then
+        echo -e "${YELLOW}Aborted.${NC}"
+        exit 0
+    fi
+    echo ""
+
+    local removed=0 failed=0
+    FORCE=true
+    for i in "${!old_paths[@]}"; do
+        BRANCH_NAME="${old_branches[$i]}"
+        WORKTREE_PATH="${old_paths[$i]}"
+        echo -e "${CYAN}── ${BRANCH_NAME} ──${NC}"
+        if do_removal; then
+            removed=$((removed + 1))
+        else
+            failed=$((failed + 1))
+        fi
+        echo ""
+    done
+    git worktree prune
+
+    if [ "$failed" -gt 0 ]; then
+        echo -e "${GREEN}Removed ${removed} old worktree(s).${NC} ${RED}${failed} need manual attention (see above).${NC}"
+        exit 1
+    fi
+    echo -e "${GREEN}Removed ${removed} old worktree(s).${NC}"
+    exit 0
+}
+
+pick_worktree() {
+    local main_wt current_wt
+    main_wt=$(fnba_primary_worktree)
+    current_wt=$(git rev-parse --show-toplevel 2>/dev/null)
+
+    wt_paths=()
+    wt_branches=()
+    wt_status=()
+    local cur_path="" cur_branch="" cur_state=""
+
+    while IFS= read -r line; do
+        case "$line" in
+            "worktree "*)
+                if [ -n "$cur_path" ]; then
+                    wt_paths+=("$cur_path")
+                    wt_branches+=("$cur_branch")
+                    wt_status+=("$(fnba_classify_wt "$cur_path" "$cur_state" "$main_wt" "$current_wt")")
+                fi
+                cur_path="${line#worktree }"
+                cur_branch=""
+                cur_state=""
+                ;;
+            "branch "*) cur_branch="${line#branch refs/heads/}" ;;
+            "detached") cur_state="detached" ;;
+            "bare")     cur_state="bare" ;;
+        esac
+    done < <(git worktree list --porcelain)
+    if [ -n "$cur_path" ]; then
+        wt_paths+=("$cur_path")
+        wt_branches+=("$cur_branch")
+        wt_status+=("$(fnba_classify_wt "$cur_path" "$cur_state" "$main_wt" "$current_wt")")
+    fi
+
+    local maxw=0 maxpw=0 label i
+    for i in "${!wt_paths[@]}"; do
+        case "${wt_status[$i]}" in
+            detached|bare) label="(${wt_status[$i]})" ;;
+            *)             label="${wt_branches[$i]}" ;;
+        esac
+        [ ${#label} -gt $maxw ] && maxw=${#label}
+        label="${wt_paths[$i]/#$HOME/~}"
+        [ ${#label} -gt $maxpw ] && maxpw=${#label}
+    done
+
+    echo -e "${CYAN}Select a worktree to remove:${NC}"
+    local -a num_to_idx=()
+    local n=0 row pretty last
+    for i in "${!wt_paths[@]}"; do
+        pretty="${wt_paths[$i]/#$HOME/~}"
+        case "${wt_status[$i]}" in
+            removable)
+                n=$((n + 1))
+                num_to_idx[$n]=$i
+                last=$(git for-each-ref --format='%(committerdate:relative)' "refs/heads/${wt_branches[$i]}")
+                printf -v row "  %d) %-*s   %-*s   " "$n" "$maxw" "${wt_branches[$i]}" "$maxpw" "$pretty"
+                echo -e "${row}${DIM}${last}${NC}"
+                ;;
+            primary)
+                printf -v row "  -) %-*s   %-*s   (primary worktree)" "$maxw" "${wt_branches[$i]}" "$maxpw" "$pretty"
+                echo -e "${DIM}${row}${NC}"
+                ;;
+            current)
+                printf -v row "  -) %-*s   %-*s   (current worktree)" "$maxw" "${wt_branches[$i]}" "$maxpw" "$pretty"
+                echo -e "${DIM}${row}${NC}"
+                ;;
+            detached|bare)
+                printf -v row "  -) %-*s   %s" "$maxw" "(${wt_status[$i]})" "$pretty"
+                echo -e "${DIM}${row}${NC}"
+                ;;
+        esac
+    done
+
+    if [ "$n" -eq 0 ]; then
+        echo ""
+        echo -e "${YELLOW}No removable worktrees found.${NC}"
+        exit 0
+    fi
+
+    echo ""
+    echo -e "  ${CYAN}c)${NC} Cleanup worktrees older than N months"
+    echo ""
+    echo -en "${BLUE}Enter number, c to cleanup by age, or q to quit: ${NC}"
+    read -r choice
+    if [[ -z "$choice" || "$choice" =~ ^[Qq]$ ]]; then
+        echo -e "${YELLOW}Aborted.${NC}"
+        exit 0
+    fi
+    if [[ "$choice" =~ ^[Cc]$ ]]; then
+        echo ""
+        cleanup_by_age
+    fi
+    if ! [[ "$choice" =~ ^[0-9]+$ ]] || [ "$choice" -lt 1 ] || [ "$choice" -gt "$n" ]; then
+        fnba_die "Invalid selection: ${choice}"
+    fi
+    BRANCH_NAME="${wt_branches[${num_to_idx[$choice]}]}"
+    echo ""
+    echo -e "${CYAN}Selected:${NC} ${BRANCH_NAME}"
+    echo ""
+}
+
+BRANCH_NAME="${1:-}"
+if [ -z "$BRANCH_NAME" ]; then
+    pick_worktree
+fi
+
+WORKTREE_PATH=$(fnba_worktree_for_branch "$BRANCH_NAME")
+if [ -z "$WORKTREE_PATH" ]; then
+    echo -e "${RED}Error: no worktree found for branch '${BRANCH_NAME}'${NC}" >&2
+    echo ""
+    echo -e "${CYAN}Existing worktrees:${NC}"
+    git worktree list
+    exit 1
+fi
+
+MAIN_WORKTREE=$(fnba_primary_worktree)
+if [ "$WORKTREE_PATH" = "$MAIN_WORKTREE" ]; then
+    fnba_die "refusing to remove the primary worktree at ${WORKTREE_PATH}"
+fi
+
+CURRENT_TOPLEVEL=$(git rev-parse --show-toplevel)
+if [ "$WORKTREE_PATH" = "$CURRENT_TOPLEVEL" ]; then
+    echo -e "${RED}Error: you're inside the worktree being removed (${WORKTREE_PATH}).${NC}" >&2
+    echo -e "${YELLOW}cd into the main repo first, then re-run.${NC}" >&2
+    exit 1
+fi
+
+echo -e "${CYAN}Plan:${NC}"
+echo -e "  ${BLUE}Branch:${NC}    ${BRANCH_NAME} ${YELLOW}(will be deleted)${NC}"
+if [ "$FORCE" = true ]; then
+    echo -e "  ${BLUE}Worktree:${NC}  ${WORKTREE_PATH} ${YELLOW}(--force)${NC}"
+else
+    echo -e "  ${BLUE}Worktree:${NC}  ${WORKTREE_PATH}"
+fi
+echo ""
+
+if [ "$SKIP_CONFIRM" != true ]; then
+    echo -e "${BLUE}Proceed? [y/N]${NC}"
+    read -r ANSWER
+    if [[ ! "$ANSWER" =~ ^([Yy]|[Yy][Ee][Ss])$ ]]; then
+        echo -e "${YELLOW}Aborted.${NC}"
+        exit 0
+    fi
+fi
+
+do_removal

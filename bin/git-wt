@@ -1,0 +1,165 @@
+#!/bin/bash
+
+# Create an FNBA git worktree under ../fnba-drafter-worktrees/.
+#
+# Usage:
+#   fnba-cli wt <branch-name>     # fast path: must be on main; fails on conflicts
+#   fnba-cli wt                   # interactive (prompt loop with retry)
+#   bin/git-wt ...                # same, invoked directly
+#
+# Fast path creates the branch from main (or tracks origin/<branch> when that
+# ref exists). Interactive mode creates from the current HEAD when the branch
+# is new.
+#
+# No per-worktree databases, ports, or Caddy — this repo has no app stack yet.
+# cmux opens the new worktree when installed and stdout is a TTY.
+
+set -e
+
+BIN_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=lib/fnba-wt-common.sh
+. "${BIN_DIR}/lib/fnba-wt-common.sh"
+
+fnba_require_git
+fnba_require_repo
+
+CURRENT_BRANCH=$(git branch --show-current)
+REPO_ROOT=$(git rev-parse --show-toplevel)
+
+usage() {
+    awk 'NR > 2 { if ($0 !~ /^#/) exit; print }' "$0" | sed 's/^# \{0,1\}//'
+}
+
+POSITIONAL_ARGS=()
+for arg in "$@"; do
+    case "$arg" in
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        -*)
+            fnba_die "Unknown argument: ${arg}"
+            ;;
+        *) POSITIONAL_ARGS+=("$arg") ;;
+    esac
+done
+set -- "${POSITIONAL_ARGS[@]}"
+
+create_worktree() {
+    local branch="$1"
+    local start_point="$2"
+    local worktree_path
+    worktree_path=$(fnba_worktree_path "$branch")
+
+    mkdir -p "$(dirname "$worktree_path")"
+    if git show-ref --verify --quiet "refs/remotes/origin/${branch}"; then
+        git worktree add "$worktree_path" "origin/${branch}" -b "$branch"
+    else
+        git worktree add -b "$branch" "$worktree_path" "$start_point"
+    fi
+    echo -e "${GREEN}✅ ${branch} → ${worktree_path}${NC}"
+
+    if [ -t 1 ] && command -v cmux >/dev/null 2>&1; then
+        cmux "$worktree_path" || true
+    fi
+}
+
+guard_new_branch() {
+    local branch="$1"
+    local worktree_path
+    worktree_path=$(fnba_worktree_path "$branch")
+
+    local existing
+    existing=$(fnba_worktree_for_branch "$branch")
+    if [ -n "$existing" ]; then
+        fnba_die "Branch '${branch}' already has a worktree at: ${existing}"
+    fi
+    if fnba_is_worktree_path_used "$worktree_path" || [ -d "$worktree_path" ]; then
+        fnba_die "Worktree path already exists: ${worktree_path}"
+    fi
+    if git show-ref --verify --quiet "refs/heads/${branch}"; then
+        fnba_emit_local_branch_diagnostic "$branch" >&2
+        exit 1
+    fi
+}
+
+BRANCH_NAME_ARG="${1:-}"
+
+if [ -n "$BRANCH_NAME_ARG" ]; then
+    if [ "$CURRENT_BRANCH" != "$DEFAULT_BRANCH" ]; then
+        fnba_die "Must be on '${DEFAULT_BRANCH}' to create a worktree (currently on '${CURRENT_BRANCH}')"
+    fi
+    if [ "$(git rev-parse --show-toplevel)" != "$(fnba_primary_worktree)" ]; then
+        fnba_die "Fast path must run from the primary ${REPO_NAME} checkout, not a linked worktree"
+    fi
+
+    BRANCH_NAME="$BRANCH_NAME_ARG"
+    guard_new_branch "$BRANCH_NAME"
+    create_worktree "$BRANCH_NAME" "$DEFAULT_BRANCH"
+else
+    echo -e "${MAGENTA}═══════════════════════════════════════════════════════════${NC}"
+    echo -e "${MAGENTA}        Git Worktree Creator for ${CYAN}${REPO_NAME}${NC}"
+    echo -e "${MAGENTA}═══════════════════════════════════════════════════════════${NC}"
+    echo ""
+    echo -e "${CYAN}Current worktrees:${NC}"
+    git worktree list | while IFS= read -r line; do
+        echo -e "  ${BLUE}►${NC} $line"
+    done
+    echo ""
+
+    while true; do
+        echo -e "${BLUE}Enter the feature branch name (e.g., ft/board, feat/projections):${NC}"
+        echo -e "${YELLOW}(or type 'quit' to exit)${NC}"
+        read -r BRANCH_NAME
+
+        if [ "$BRANCH_NAME" = "quit" ] || [ "$BRANCH_NAME" = "q" ]; then
+            echo -e "${YELLOW}Exiting...${NC}"
+            exit 0
+        fi
+        if [ -z "$BRANCH_NAME" ]; then
+            echo -e "${RED}Error: Branch name cannot be empty${NC}"
+            echo ""
+            continue
+        fi
+
+        WORKTREE_PATH=$(fnba_worktree_path "$BRANCH_NAME")
+        WORKTREE_NAME=$(basename "$WORKTREE_PATH")
+        CONFLICT_FOUND=false
+        CONFLICT_MESSAGES=""
+
+        EXISTING_WORKTREE=$(fnba_worktree_for_branch "$BRANCH_NAME")
+        if [ -n "$EXISTING_WORKTREE" ]; then
+            CONFLICT_FOUND=true
+            CONFLICT_MESSAGES="${CONFLICT_MESSAGES}${YELLOW}⚠️  Branch '${BRANCH_NAME}' already has a worktree at:${NC}\n   ${EXISTING_WORKTREE}\n"
+        fi
+        if fnba_is_worktree_path_used "$WORKTREE_PATH"; then
+            CONFLICT_FOUND=true
+            CONFLICT_MESSAGES="${CONFLICT_MESSAGES}${YELLOW}⚠️  Path '${WORKTREE_NAME}' is already used by another worktree${NC}\n"
+        elif [ -d "$WORKTREE_PATH" ]; then
+            CONFLICT_FOUND=true
+            CONFLICT_MESSAGES="${CONFLICT_MESSAGES}${YELLOW}⚠️  Directory '${WORKTREE_NAME}' already exists${NC}\n"
+        fi
+        if [ -z "$EXISTING_WORKTREE" ] && git show-ref --verify --quiet "refs/heads/${BRANCH_NAME}"; then
+            CONFLICT_FOUND=true
+            CONFLICT_MESSAGES="${CONFLICT_MESSAGES}$(fnba_emit_local_branch_diagnostic "$BRANCH_NAME")\n"
+        fi
+
+        if [ "$CONFLICT_FOUND" = true ]; then
+            echo -e "\n${RED}Conflicts detected:${NC}"
+            echo -e "$CONFLICT_MESSAGES"
+            echo -e "${CYAN}Resolve the conflict above and try again, or choose a different branch name.${NC}"
+            echo ""
+            continue
+        fi
+        break
+    done
+
+    if git show-ref --verify --quiet "refs/remotes/origin/${BRANCH_NAME}"; then
+        create_worktree "$BRANCH_NAME" "$CURRENT_BRANCH"
+    else
+        echo -e "${BLUE}Branch '${BRANCH_NAME}' doesn't exist. Creating from ${CYAN}${CURRENT_BRANCH}${BLUE}.${NC}"
+        create_worktree "$BRANCH_NAME" "$CURRENT_BRANCH"
+    fi
+fi
+
+echo -e "${CYAN}cd ${REPO_ROOT} is unchanged. New worktree:${NC} $(fnba_worktree_path "$BRANCH_NAME")"

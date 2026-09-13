@@ -1,0 +1,62 @@
+#!/bin/bash
+
+# FNBA repo CLI. Committed entry point for worktree helpers; alias this as fnba-cli.
+#
+# Usage:
+#   fnba-cli wt [branch]                    Create a worktree (fast path requires main)
+#   fnba-cli wt-remove [branch] [-y] [--force]
+#   fnba-cli shell-init                     Print `alias fnba-cli=...` for ~/.zshrc
+#   fnba-cli help
+#
+# Direct script names also work: bin/git-wt, bin/git-wt-remove.
+# Subcommand aliases: git-wt, git-wt-remove, remove.
+
+set -euo pipefail
+
+BIN_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+usage() {
+    cat <<EOF
+fnba-cli — FNBA worktree CLI (this repository only)
+
+Commands:
+  wt [branch]                         Create a worktree under ../fnba-drafter-worktrees/
+  wt-remove [branch] [-y] [--force]   Remove a worktree and delete its local branch
+  shell-init                          Print the alias line to add to ~/.zshrc
+  help                                Show this help
+
+Examples:
+  fnba-cli wt ft/board
+  fnba-cli wt-remove ft/board -y
+  eval "\$(/path/to/fnba-drafter/bin/fnba-cli shell-init)"
+
+Worktrees are for parallel development: one git-mutating session per worktree.
+See docs/architecture/worktrees.md.
+EOF
+}
+
+cmd="${1:-help}"
+if [ "$#" -gt 0 ]; then
+    shift
+fi
+
+case "$cmd" in
+    wt|git-wt)
+        exec "${BIN_DIR}/git-wt" "$@"
+        ;;
+    wt-remove|git-wt-remove|remove)
+        exec "${BIN_DIR}/git-wt-remove" "$@"
+        ;;
+    shell-init)
+        printf "alias fnba-cli=%q\n" "${BIN_DIR}/fnba-cli"
+        ;;
+    help|-h|--help)
+        usage
+        ;;
+    *)
+        echo "Unknown command: ${cmd}" >&2
+        echo "" >&2
+        usage >&2
+        exit 2
+        ;;
+esac

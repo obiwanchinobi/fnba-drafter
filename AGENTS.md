@@ -21,3 +21,4 @@ Draft a winning team on draft night for a once-a-year 19-category rotisserie fan
 - `Use spec-it: <feedback>` selects the shared `spec-it` workflow. Native invocation is `/spec-it` in Grok/Claude and `$spec-it` in Codex CLI/IDE. Read its `SKILL.md` before executing; it writes gitignored plans to `docs/tmp/` and stops without implementation.
 - Keep `CLAUDE.md` as an import of this file so Claude receives the same project rules. Keep shared workflow requirements out of personal memory and vendor-specific instruction copies.
 - Keep product facts in `docs/context/`; keep architecture notes in `docs/architecture/`; keep agent rules in this file. Link instead of copying long docs here.
+- Parallel feature work uses git worktrees via `fnba-cli wt` / `fnba-cli wt-remove` (`bin/fnba-cli`). One git-mutating session per worktree. See [`docs/architecture/worktrees.md`](docs/architecture/worktrees.md).
