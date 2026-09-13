@@ -21,8 +21,9 @@ Keep the POHQ `git-wt` / `git-wt-remove` aliases unchanged. `fnba-cli` is a diff
 ## Commands
 
 ```bash
+fnba-cli                             # interactive menu: create or remove
 fnba-cli wt ft/board                 # from main: new branch + worktree
-fnba-cli wt                          # interactive
+fnba-cli wt                          # interactive create
 fnba-cli wt-remove ft/board          # confirm, then remove worktree + delete branch
 fnba-cli wt-remove ft/board -y       # skip confirm
 fnba-cli wt-remove ft/board --force  # dirty worktree

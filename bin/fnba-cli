@@ -3,6 +3,7 @@
 # FNBA repo CLI. Committed entry point for worktree helpers; alias this as fnba-cli.
 #
 # Usage:
+#   fnba-cli                                Interactive menu (create / remove)
 #   fnba-cli wt [branch]                    Create a worktree (fast path requires main)
 #   fnba-cli wt-remove [branch] [-y] [--force]
 #   fnba-cli shell-init                     Print `alias fnba-cli=...` for ~/.zshrc
@@ -14,18 +15,22 @@
 set -euo pipefail
 
 BIN_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=lib/fnba-wt-common.sh
+. "${BIN_DIR}/lib/fnba-wt-common.sh"
 
 usage() {
     cat <<EOF
 fnba-cli — FNBA worktree CLI (this repository only)
 
 Commands:
+  (no args)                           Interactive menu
   wt [branch]                         Create a worktree under ../fnba-drafter-worktrees/
   wt-remove [branch] [-y] [--force]   Remove a worktree and delete its local branch
   shell-init                          Print the alias line to add to ~/.zshrc
   help                                Show this help
 
 Examples:
+  fnba-cli
   fnba-cli wt ft/board
   fnba-cli wt-remove ft/board -y
   eval "\$(/path/to/fnba-drafter/bin/fnba-cli shell-init)"
@@ -35,12 +40,54 @@ See docs/architecture/worktrees.md.
 EOF
 }
 
-cmd="${1:-help}"
+interactive_root() {
+    echo -e "${MAGENTA}═══════════════════════════════════════════════════════════${NC}"
+    echo -e "${MAGENTA}        fnba-cli — FNBA worktree CLI${NC}"
+    echo -e "${MAGENTA}═══════════════════════════════════════════════════════════${NC}"
+    echo ""
+    echo -e "  ${CYAN}1)${NC} Create a worktree"
+    echo -e "  ${CYAN}2)${NC} Remove a worktree"
+    echo -e "  ${CYAN}h)${NC} Help"
+    echo ""
+    while true; do
+        echo -en "${BLUE}Enter number, h for help, or q to quit: ${NC}"
+        choice=""
+        read -r choice || true
+        case "$choice" in
+            1)
+                echo ""
+                exec "${BIN_DIR}/git-wt"
+                ;;
+            2)
+                echo ""
+                exec "${BIN_DIR}/git-wt-remove"
+                ;;
+            [Hh]|help)
+                echo ""
+                usage
+                exit 0
+                ;;
+            ""|[Qq]|quit)
+                echo -e "${YELLOW}Exiting...${NC}"
+                exit 0
+                ;;
+            *)
+                echo -e "${RED}Invalid selection: ${choice}${NC}"
+                echo ""
+                ;;
+        esac
+    done
+}
+
+cmd="${1:-}"
 if [ "$#" -gt 0 ]; then
     shift
 fi
 
 case "$cmd" in
+    "")
+        interactive_root
+        ;;
     wt|git-wt)
         exec "${BIN_DIR}/git-wt" "$@"
         ;;

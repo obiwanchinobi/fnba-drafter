@@ -22,7 +22,7 @@ def run(args, cwd, env=None, input_text=None):
         args,
         cwd=cwd,
         env=merged,
-        input=input_text,
+        input="" if input_text is None else input_text,
         text=True,
         capture_output=True,
         check=False,
@@ -73,10 +73,52 @@ class FnbaCliTest(unittest.TestCase):
         help_result = self.cli("help")
         self.assertEqual(help_result.returncode, 0, help_result.stderr)
         self.assertIn("fnba-cli wt", help_result.stdout)
+        self.assertIn("(no args)", help_result.stdout)
         init = self.cli("shell-init")
         self.assertEqual(init.returncode, 0, init.stderr)
         self.assertIn("alias fnba-cli=", init.stdout)
         self.assertIn(str(CLI), init.stdout)
+
+    def test_root_menu_quit(self):
+        result = self.cli(input_text="q\n")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("Create a worktree", result.stdout)
+        self.assertIn("Remove a worktree", result.stdout)
+        self.assertIn("Exiting", result.stdout)
+
+    def test_root_menu_eof_quits(self):
+        result = self.cli()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("Create a worktree", result.stdout)
+        self.assertIn("Exiting", result.stdout)
+
+    def test_root_menu_help(self):
+        result = self.cli(input_text="h\n")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("fnba-cli wt", result.stdout)
+
+    def test_root_menu_invalid_then_quit(self):
+        result = self.cli(input_text="nope\nq\n")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("Invalid selection: nope", result.stdout)
+        self.assertIn("Exiting", result.stdout)
+
+    def test_root_menu_create(self):
+        result = self.cli(input_text="1\nft/from-menu\n")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        expected = (self.tmp / "fnba-drafter-worktrees" / "ft-from-menu").resolve()
+        self.assertTrue(expected.is_dir(), result.stdout)
+        self.assertIn(str(expected), self.worktree_paths())
+        self.assertIn("ft/from-menu", self.branches())
+
+    def test_root_menu_remove(self):
+        created = self.cli("wt", "ft/board")
+        self.assertEqual(created.returncode, 0, created.stderr)
+        expected = self.tmp / "fnba-drafter-worktrees" / "ft-board"
+        removed = self.cli(input_text="2\n1\ny\n")
+        self.assertEqual(removed.returncode, 0, removed.stdout + removed.stderr)
+        self.assertFalse(expected.exists())
+        self.assertNotIn("ft/board", self.branches())
 
     def test_unknown_command(self):
         result = self.cli("not-a-command")
