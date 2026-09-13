@@ -41,7 +41,7 @@ The shared wording tells the agent to load the named skill; it is not a universa
 
 Both harnesses editing the same checkout change the same files. Separate branches/worktrees still require Git merging, and an already-loaded conversation can retain older instructions. Use fresh sessions for verification after changing a skill. Check personal/plugin overrides if a loader reports another source path.
 
-`spec-it` keeps its original plan template, requirement decisions, read-only data review, and plan-only boundary. Its former Grok `build-with-ai` dependency is now an explicit [shared planning reference](../../.agents/skills/spec-it/references/ai-feature-planning.md), retaining the original SpaceXAI default unless the user or repository specifies otherwise. No private skill cache is required.
+`spec-it` keeps its plan template (including harness and live model-with-effort provenance), requirement decisions, read-only data review, and plan-only boundary. Its former Grok `build-with-ai` dependency is now an explicit [shared planning reference](../../.agents/skills/spec-it/references/ai-feature-planning.md), retaining the original SpaceXAI default unless the user or repository specifies otherwise. No private skill cache is required.
 
 ## Verification
 
@@ -64,7 +64,7 @@ For substantive workflow updates, run these cases in disposable worktrees on the
 | Ambiguous scope | Blocking question asked before a plan is finalized; no invented user decision |
 | Persisted-data requirement | Read-only local evidence, or explicit missing evidence and its impact; no DB mutation or exposed credentials |
 | AI feature requirement | Shared AI planning reference used; provider assumption and current-doc evidence stated; no bundled-skill dependency |
-| Every completed plan | Timestamped file under ignored `docs/tmp/`; no implementation or plan commit; source/template/index preserved |
+| Every completed plan | Timestamped file under ignored `docs/tmp/`; header records harness and the live session model with effort; no implementation or plan commit; source/template/index preserved |
 
 Use those same cases to investigate differences between harnesses. Sharing source prevents divergent maintained copies; model quality, tools, permissions, context, and instruction precedence still affect outcomes.
 

@@ -45,7 +45,11 @@ Record the source as `file:<path>` or `text`, and keep the **verbatim original i
    - Prefix is local time, e.g. `20260908_143022_`.
    - `<slug>`: 3–6 lowercase hyphenated words from the feedback. No spaces.
    - If that path exists, bump the timestamp and retry.
-4. Do not commit the plan.
+4. Fill plan-header provenance for **this run** (the process writing the file, not a parent agent or a config default):
+   - **Harness**: `Grok Build`, `Claude Code`, or `Codex`. Use `unknown` if this session is none of those.
+   - **Model**: `<id> (<effort>)`, for example `grok-4.6 (xhigh)`. Prefer the harness model id over a display name. Always append the live reasoning/effort setting in parentheses; use `none` when this model has no effort control, or `unknown` when the setting cannot be determined.
+   Resolve id and effort from this conversation first (system/developer identity or session status the harness attached to this turn). If that is ambiguous and the harness already pointed at this session (for example a session-id environment variable), read that session's metadata. Do not treat user/project default model or effort settings as the session values. If the id is unknown, write `unknown (<effort>)`. Do not invent an id or effort.
+5. Do not commit the plan.
 
 ## Workflow
 
@@ -98,6 +102,8 @@ Write the file with the template below. Then stop and tell the user the path plu
 
 - Date: <YYYY-MM-DD>
 - Source: <file:path | text>
+- Harness: <Grok Build | Claude Code | Codex | unknown>
+- Model: <model id | unknown> (<effort | none | unknown>)
 - Stack lens: Rails, TypeScript, React, MUI, bash, agentic loops/graphs
 - Status: plan only — not implemented
 
@@ -156,6 +162,7 @@ Repeat the `## R<n>:` block for every requirement in index order.
 ## Output rules
 
 - The plan file is the deliverable. Do not implement.
+- Header `Harness` and `Model` are required. `Model` includes the parenthetical effort. Do not omit them or leave the placeholders.
 - Do not skip the original-input section or the index table.
 - Every index row has a matching `## R<n>:` section, and vice versa.
 - Proposed files in the index are real paths (existing or intended). Use `—` when none.
