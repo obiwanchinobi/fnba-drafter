@@ -1,6 +1,6 @@
 # Shared project skills
 
-Adopted 13 September 2026 for Codex, Claude Code, and Grok Build. This is the project's implementation of the Agent Skills format, not a guarantee of identical model behavior. Agent rules are maintained in [AGENTS.md](../AGENTS.md); this document explains the setup and its verification.
+Adopted 13 September 2026 for Codex, Claude Code, and Grok Build. This is the project's implementation of the Agent Skills format, not a guarantee of identical model behavior. Agent rules are maintained in [AGENTS.md](../../AGENTS.md); this document explains the setup and its verification.
 
 ## One source of truth
 
@@ -41,7 +41,7 @@ The shared wording tells the agent to load the named skill; it is not a universa
 
 Both harnesses editing the same checkout change the same files. Separate branches/worktrees still require Git merging, and an already-loaded conversation can retain older instructions. Use fresh sessions for verification after changing a skill. Check personal/plugin overrides if a loader reports another source path.
 
-`spec-it` keeps its original plan template, requirement decisions, read-only data review, and plan-only boundary. Its former Grok `build-with-ai` dependency is now an explicit [shared planning reference](../.agents/skills/spec-it/references/ai-feature-planning.md), retaining the original SpaceXAI default unless the user or repository specifies otherwise. No private skill cache is required.
+`spec-it` keeps its original plan template, requirement decisions, read-only data review, and plan-only boundary. Its former Grok `build-with-ai` dependency is now an explicit [shared planning reference](../../.agents/skills/spec-it/references/ai-feature-planning.md), retaining the original SpaceXAI default unless the user or repository specifies otherwise. No private skill cache is required.
 
 ## Verification
 

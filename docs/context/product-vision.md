@@ -16,7 +16,7 @@ A successful season is a roster that competes to win **this** league's rotisseri
 
 League scoring type: **Rotisserie**.
 
-19 categories are selected. Source screenshot: [`docs/league-scoring-categories.png`](league-scoring-categories.png).
+19 categories are selected. Source screenshot: [`docs/context/league-scoring-categories.png`](league-scoring-categories.png).
 
 Categories marked `*` are inverse in typical rotisserie (lower is better).
 

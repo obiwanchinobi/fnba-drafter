@@ -6,7 +6,7 @@ Revised: 2026-09-13. Added a confidence split (open standard vs research vs Grok
 
 Status: discussion note. This records how Grok Build (and 2026 coding agents generally) can be made to follow project-specific backend and frontend design patterns, and whether that approach scales to dozens of patterns on each side. Nothing in this file is a product decision for FNBA scoring or ranking.
 
-Audience: engineering discussion. The canonical product source of truth remains [product-vision.md](product-vision.md). Agent operating rules stay in [`AGENTS.md`](../AGENTS.md); this document is the longer rationale those rules would point at.
+Audience: engineering discussion. The canonical product source of truth remains [product-vision.md](../context/product-vision.md). Agent operating rules stay in [`AGENTS.md`](../../AGENTS.md); this document is the longer rationale those rules would point at.
 
 **Certainty in one line:** the *stack* (lean always-on file + on-demand skills + golden code + mechanical checks) is current practice as of September 2026. Exact line counts, “router skills”, and “20–40 skills in the catalog” are design recommendations on top of that, not a named standard.
 
