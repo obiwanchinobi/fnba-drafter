@@ -16,5 +16,8 @@ Draft a winning team on draft night for a once-a-year 19-category rotisserie fan
 
 ## Agent conventions
 
-- Skills live in `.grok/skills/`. `/spec-it` writes gitignored plans to `docs/tmp/`.
+- Shared skills live only in `.agents/skills/<name>/`; edit that canonical directory from every harness. `.claude/skills/<name>` entries are relative symlinks, never independent copies. Do not create parallel definitions in `.grok/skills/` or `.codex/skills/`.
+- Before creating, editing, or moving a skill, read [`docs/shared-skills.md`](docs/shared-skills.md). Run `python3 scripts/check_shared_skills.py` before committing skill or harness-instruction changes.
+- `Use spec-it: <feedback>` selects the shared `spec-it` workflow. Native invocation is `/spec-it` in Grok/Claude and `$spec-it` in Codex CLI/IDE. Read its `SKILL.md` before executing; it writes gitignored plans to `docs/tmp/` and stops without implementation.
+- Keep `CLAUDE.md` as an import of this file so Claude receives the same project rules. Keep shared workflow requirements out of personal memory and vendor-specific instruction copies.
 - Keep product facts in `docs/`; keep agent rules in this file. Link instead of copying long docs here.

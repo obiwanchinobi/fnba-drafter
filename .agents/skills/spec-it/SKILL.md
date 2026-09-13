@@ -4,27 +4,32 @@ description: >
   Analyse feedback (a file path or free text) as a staff-level full-stack
   engineer and write a structured plan under docs/tmp. Extracts requirements,
   decides actioned / rejected / informative, and produces per-requirement
-  technical and data review. Use when the user runs /spec-it, or says
+  technical and data review. Use when the user invokes spec-it, or says
   "review this feedback", "plan from this feedback", "analyse this feedback",
   "turn this into a plan", "spec it", or drops a feedback file to plan against.
-argument-hint: "[file path or feedback text]"
 ---
 
 # Feedback Plan
 
-You are a staff-level full-stack engineer. Review the given feedback using first principles and current industry best practice for Ruby on Rails, TypeScript, React, MUI, shell/bash, and agentic software (loops and graphs). Adhere to YAGNI. Remove ambiguity with `ask_user_question` before writing the plan.
+You are a staff-level full-stack engineer. Review the given feedback using first principles and current industry best practice for Ruby on Rails, TypeScript, React, MUI, shell/bash, and agentic software (loops and graphs). Adhere to YAGNI. Resolve blocking ambiguity before writing the plan.
 
 This skill **only writes a plan**. Do not implement code, change product files, or start an execute-plan loop unless the user explicitly asks after the plan exists.
+
+## Harness compatibility
+
+Follow the repository's `AGENTS.md`. This workflow and its references are shared by Codex, Claude Code, and Grok Build; use the current harness's available tools for the operations below. Do not require a particular tool name or a vendor-bundled skill. Resolve supporting references relative to this skill directory and feedback paths relative to the repository root.
+
+Accept `Use spec-it: <feedback>` as the shared prompt form. Native invocation is `/spec-it <feedback>` in Grok Build and Claude Code, or `$spec-it <feedback>` in Codex CLI/IDE. Invocation syntax does not change the workflow.
 
 ## Input
 
 Resolve the feedback source in this order:
 
-1. Slash-command / skill arguments (file path or free text).
+1. Native skill arguments or the feedback following `Use spec-it:` (file path or free text).
 2. A file path or pasted feedback in the current user message.
 3. An attached or previously discussed file in this conversation.
 
-A token is a **file** when it is an existing path (relative to the repo root or absolute). Read it with `read_file` (or the matching tool for pdf/docx). Otherwise treat the arguments and message body as **free text**.
+A token is a **file** when it is an existing path (relative to the repo root or absolute). Read the complete file with the available filesystem tools (or an appropriate PDF/DOCX reader). Otherwise treat the arguments and message body as **free text**.
 
 If both a file and extra commentary are present, the file is the primary source and the commentary is extra constraint.
 
@@ -56,7 +61,7 @@ For each requirement, inspect only the code, config, and data needed to judge it
 
 ### 3. Remove ambiguity
 
-If a decision would change files, scope, or whether to action/reject, ask before writing the plan. Use `ask_user_question` for discrete choices (recommended option first). Ask all blocking questions in as few rounds as possible. Do not guess product intent.
+If unresolved ambiguity would change proposed files, scope, or whether to action/reject, ask before writing the plan. Use an available question tool when supported in the current mode (recommended option first for discrete choices), otherwise ask directly in chat. Wait for answers to blocking questions; elapsed time is not an answer. Ask all blocking questions in as few rounds as possible. Do not guess product intent.
 
 Do not ask what the codebase already answers.
 
@@ -68,7 +73,7 @@ For every requirement that could be affected by persisted data, inspect the **lo
 - Query with the project’s usual client (`rails runner`, `psql`, `sqlite3`, etc.).
 - Check existence, volume, nulls, enums, and whether a migration or backfill is implied.
 
-If there is no local DB or the requirement is not data-shaped, say so in that requirement’s Data review. Never write to the DB.
+If there is no local DB or the requirement is not data-shaped, say so in that requirement’s Data review. If access is unavailable, record the missing evidence and its impact instead of inventing results. Never write to the DB or expose credentials in the plan or tool output.
 
 ### 5. Decide
 
@@ -145,7 +150,7 @@ Repeat the `## R<n>:` block for every requirement in index order.
 - Rails: conventional MVC/jobs/migrations; no new abstraction without a second call site.
 - React + TypeScript + MUI: existing design-system components and app patterns; no new UI kit.
 - Bash: POSIX-safe, quoted, no unused flags.
-- Agentic work: name the loop or graph, the halt condition, and which existing skills/tools it uses. If an AI/LLM feature is `actioned`, follow the `build-with-ai` skill (SpaceXAI).
+- Agentic work: name the loop or graph, the halt condition, and which existing skills/tools it uses. If an AI/LLM feature is `actioned`, read [AI feature planning](references/ai-feature-planning.md). This shared reference replaces the former dependency on Grok's bundled `build-with-ai` skill.
 - Tech-plan steps must be implementable by an agent without re-discovering intent.
 
 ## Output rules
