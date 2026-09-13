@@ -16,5 +16,5 @@ Draft a winning team on draft night for a once-a-year 19-category rotisserie fan
 
 ## Agent conventions
 
-- Skills live in `.grok/skills/`. `/feedback-plan` writes gitignored plans to `docs/tmp/`.
+- Skills live in `.grok/skills/`. `/spec-it` writes gitignored plans to `docs/tmp/`.
 - Keep product facts in `docs/`; keep agent rules in this file. Link instead of copying long docs here.

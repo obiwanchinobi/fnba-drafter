@@ -1,12 +1,12 @@
 ---
-name: feedback-plan
+name: spec-it
 description: >
   Analyse feedback (a file path or free text) as a staff-level full-stack
   engineer and write a structured plan under docs/tmp. Extracts requirements,
   decides actioned / rejected / informative, and produces per-requirement
-  technical and data review. Use when the user runs /feedback-plan, or says
+  technical and data review. Use when the user runs /spec-it, or says
   "review this feedback", "plan from this feedback", "analyse this feedback",
-  "turn this into a plan", or drops a feedback file to plan against.
+  "turn this into a plan", "spec it", or drops a feedback file to plan against.
 argument-hint: "[file path or feedback text]"
 ---
 
