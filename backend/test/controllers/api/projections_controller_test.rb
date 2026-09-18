@@ -153,6 +153,68 @@ module Api
       assert_nil row["ppm"]
     end
 
+    test "POST /api/projections/refresh missing ESPN ENV returns 503 and does not write" do
+      player = create_player(espn_player_id: 1)
+      create_projection(player: player, pts: 100)
+
+      with_espn_env(nil, nil) do
+        post "/api/projections/refresh", params: { source: "espn" }, as: :json
+      end
+
+      assert_response :service_unavailable
+      json = JSON.parse(response.body)
+      assert_equal "espn_credentials_missing", json["error"]
+      assert_equal 1, PlayerProjection.where(source: "espn", season: 2027).count
+      assert_equal 100, PlayerProjection.find_by!(source: "espn", season: 2027).pts
+    end
+
+    test "POST /api/projections/refresh unknown source returns 422" do
+      post "/api/projections/refresh", params: { source: "htb" }, as: :json
+
+      assert_response :unprocessable_entity
+      json = JSON.parse(response.body)
+      assert_equal "unknown_source", json["error"]
+      assert_equal 0, PlayerProjection.count
+    end
+
+    test "POST /api/projections/refresh fetch failure returns 502 and does not delete existing rows" do
+      player = create_player(espn_player_id: 1)
+      create_projection(player: player, pts: 100)
+
+      failing_client = Class.new do
+        def each_page
+          raise EspnProjectionsClient::InvalidResponseError, "ESPN request failed"
+        end
+      end.new
+
+      with_espn_client(failing_client) do
+        post "/api/projections/refresh", params: { source: "espn" }, as: :json
+      end
+
+      assert_response :bad_gateway
+      json = JSON.parse(response.body)
+      assert_equal "espn_fetch_failed", json["error"]
+      assert_equal 1, PlayerProjection.where(source: "espn", season: 2027).count
+      assert_equal 100, PlayerProjection.find_by!(source: "espn", season: 2027).pts
+    end
+
+    test "POST /api/projections/refresh with stubbed client returns player_count" do
+      payload = JSON.parse(file_fixture("espn_kona_player_info.json").read)
+      fake_client = FakePageClient.new([ payload.fetch("players") ])
+
+      with_espn_client(fake_client) do
+        post "/api/projections/refresh", params: { source: "espn" }, as: :json
+      end
+
+      assert_response :success
+      json = JSON.parse(response.body)
+      assert_equal "espn", json["source"]
+      assert_equal 2027, json["season"]
+      assert_equal 3, json["player_count"]
+      assert json["imported_at"].present?
+      assert_equal 3, PlayerProjection.where(source: "espn", season: 2027).count
+    end
+
     test "GET /api/projections sorts by espn roto rank then pts with NULLs last" do
       ranked_second = create_player(full_name: "Rank Two", espn_player_id: 10)
       ranked_first = create_player(full_name: "Rank One", espn_player_id: 11)
@@ -179,7 +241,38 @@ module Api
       ], names
     end
 
+    class FakePageClient
+      def initialize(pages)
+        @pages = pages
+      end
+
+      def each_page
+        @pages.each { |players| yield players }
+      end
+    end
+
     private
+      def with_espn_client(client)
+        importer = EspnProjectionsImporter.new(client: client)
+        EspnProjectionsImporter.define_singleton_method(:new) { |*_args, **_kwargs, &_block| importer }
+        yield
+      ensure
+        if EspnProjectionsImporter.singleton_class.instance_methods(false).include?(:new)
+          EspnProjectionsImporter.singleton_class.remove_method(:new)
+        end
+      end
+
+      def with_espn_env(swid, s2)
+        old_swid = ENV["ESPN_SWID"]
+        old_s2 = ENV["ESPN_S2"]
+        swid.nil? ? ENV.delete("ESPN_SWID") : ENV["ESPN_SWID"] = swid
+        s2.nil? ? ENV.delete("ESPN_S2") : ENV["ESPN_S2"] = s2
+        yield
+      ensure
+        old_swid.nil? ? ENV.delete("ESPN_SWID") : ENV["ESPN_SWID"] = old_swid
+        old_s2.nil? ? ENV.delete("ESPN_S2") : ENV["ESPN_S2"] = old_s2
+      end
+
       def create_player(**attrs)
         Player.create!(
           {

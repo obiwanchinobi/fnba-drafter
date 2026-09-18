@@ -15,7 +15,40 @@ module Api
       render json: projections.map { |projection| serialize_projection(projection) }
     end
 
+    def refresh
+      source = refresh_payload["source"].presence || DEFAULT_SOURCE
+
+      unless source == "espn"
+        render json: { error: "unknown_source" }, status: :unprocessable_entity
+        return
+      end
+
+      result = EspnProjectionsImporter.new.call
+      render json: {
+        source: result[:source],
+        season: result[:season],
+        player_count: result[:player_count],
+        imported_at: result[:imported_at]
+      }
+    rescue EspnProjectionsClient::MissingCredentialsError
+      render json: { error: "espn_credentials_missing" }, status: :service_unavailable
+    rescue EspnProjectionsClient::UnauthorizedError, EspnProjectionsClient::InvalidResponseError, EspnProjectionsClient::Error
+      render json: { error: "espn_fetch_failed" }, status: :bad_gateway
+    end
+
     private
+      # json 3 JSON.parse no longer accepts the options ActiveSupport::JSON.decode
+      # still passes, so JSON POST bodies cannot be read via params.
+      def refresh_payload
+        raw = request.raw_post
+        return {} if raw.blank?
+
+        parsed = JSON.parse(raw)
+        parsed.is_a?(Hash) ? parsed : {}
+      rescue JSON::ParserError
+        {}
+      end
+
       def serialize_projection(projection)
         player = projection.player
         turnovers = projection[:to]

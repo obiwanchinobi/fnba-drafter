@@ -54,13 +54,10 @@ test('changing the source select calls onSourceChange', () => {
   expect(onSourceChange).toHaveBeenCalledWith('espn')
 })
 
-test('renders player search, ESPN position chips, and NBA team options without an Update button', () => {
+test('renders player search, ESPN position chips, and NBA team options', () => {
   renderToolbar(<ProjectionsToolbar source="espn" {...idleHandlers} />)
 
   expect(screen.getByLabelText(/player name/i)).toBeInTheDocument()
-  expect(
-    screen.queryByRole('button', { name: /update from source/i }),
-  ).not.toBeInTheDocument()
 
   for (const chip of ['All', 'PG', 'SG', 'SF', 'PF', 'C', 'G', 'F/C']) {
     expect(screen.getByRole('button', { name: chip === 'C' || chip === 'G' ? new RegExp(`^${chip}$`) : chip })).toBeInTheDocument()
@@ -104,6 +101,32 @@ test('search, position, and team controls notify the page via props', () => {
   fireEvent.mouseDown(screen.getByRole('combobox', { name: /nba team/i }))
   fireEvent.click(screen.getByRole('option', { name: 'DEN' }))
   expect(onTeamsChange).toHaveBeenCalledWith(['DEN'])
+})
+
+test('renders Update from source and calls onUpdateFromSource', () => {
+  const onUpdateFromSource = vi.fn()
+
+  renderToolbar(
+    <ProjectionsToolbar
+      source="espn"
+      {...idleHandlers}
+      onUpdateFromSource={onUpdateFromSource}
+    />,
+  )
+
+  fireEvent.click(screen.getByRole('button', { name: /update from source/i }))
+  expect(onUpdateFromSource).toHaveBeenCalledTimes(1)
+})
+
+test('Update from source is disabled with a loading spinner while updating', () => {
+  renderToolbar(
+    <ProjectionsToolbar source="espn" {...idleHandlers} updating />,
+  )
+
+  expect(
+    screen.getByRole('button', { name: /update from source/i }),
+  ).toBeDisabled()
+  expect(screen.getByRole('progressbar')).toBeInTheDocument()
 })
 
 test('NBA team options include extra abbrevs from loaded rows', () => {

@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom/vitest'
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { ThemeProvider } from '@mui/material/styles'
 import { afterEach, expect, test, vi } from 'vitest'
 import type { ReactElement } from 'react'
@@ -131,7 +131,12 @@ test('shows empty-state copy to use Update from source when there are no rows', 
   expect(
     await screen.findByRole('heading', { name: '2026–27 projections' }),
   ).toBeInTheDocument()
-  expect(await screen.findByText(/Update from source/i)).toBeInTheDocument()
+  expect(
+    await screen.findByText(/No projections yet\. Use Update from source\./),
+  ).toBeInTheDocument()
+  expect(
+    screen.getByRole('button', { name: /update from source/i }),
+  ).toBeInTheDocument()
   expect(fetchMock).toHaveBeenCalledWith(
     '/api/projections?source=espn&season=2027',
   )
@@ -334,4 +339,84 @@ test('NULL OREB sorts last in both directions and does not render as 0.0', async
     'Shai Gilgeous-Alexander',
     'Nikola Jokic',
   ])
+})
+
+test('Update from source POSTs refresh then GETs projections again', async () => {
+  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input)
+    if (init?.method === 'POST') {
+      return {
+        ok: true,
+        json: async () => ({
+          source: 'espn',
+          season: 2027,
+          player_count: 3,
+          imported_at: '2026-09-18T13:00:00.000Z',
+        }),
+      }
+    }
+    return {
+      ok: true,
+      json: async () => THREE_ROWS,
+    }
+  })
+  vi.stubGlobal('fetch', fetchMock)
+
+  renderPage(<ProjectionsPage />)
+
+  expect(await screen.findByText('Nikola Jokic')).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: /update from source/i }))
+
+  await waitFor(() => {
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+  })
+
+  const calls = fetchMock.mock.calls.map(([input, init]) => [
+    String(input),
+    init?.method ?? 'GET',
+  ])
+  expect(calls).toEqual([
+    ['/api/projections?source=espn&season=2027', 'GET'],
+    ['/api/projections/refresh', 'POST'],
+    ['/api/projections?source=espn&season=2027', 'GET'],
+  ])
+  expect(fetchMock.mock.calls[1]?.[1]).toEqual(
+    expect.objectContaining({
+      method: 'POST',
+      headers: expect.objectContaining({
+        'Content-Type': 'application/json',
+      }),
+      body: JSON.stringify({ source: 'espn', season: 2027 }),
+    }),
+  )
+  expect(await screen.findByText(/Imported 3 players/)).toBeInTheDocument()
+  expect(screen.getByText(/Last imported:/)).toBeInTheDocument()
+})
+
+test('refresh credentials error shows an alert and keeps the current rows', async () => {
+  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    if (init?.method === 'POST') {
+      return {
+        ok: false,
+        status: 503,
+        json: async () => ({ error: 'espn_credentials_missing' }),
+      }
+    }
+    return {
+      ok: true,
+      json: async () => THREE_ROWS,
+    }
+  })
+  vi.stubGlobal('fetch', fetchMock)
+
+  renderPage(<ProjectionsPage />)
+
+  expect(await screen.findByText('Nikola Jokic')).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: /update from source/i }))
+
+  expect(await screen.findByRole('alert')).toHaveTextContent(
+    /ESPN credentials are missing/i,
+  )
+  expect(screen.getByText('Nikola Jokic')).toBeInTheDocument()
+  expect(screen.getByText('Shai Gilgeous-Alexander')).toBeInTheDocument()
 })

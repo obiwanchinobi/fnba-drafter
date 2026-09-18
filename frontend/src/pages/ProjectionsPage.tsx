@@ -7,7 +7,9 @@ import {
   DEFAULT_PROJECTION_SEASON,
   DEFAULT_PROJECTION_SOURCE,
   fetchProjections,
+  refreshProjections,
   type Projection,
+  type ProjectionRefresh,
 } from '../api/projections.ts'
 import ProjectionsTable, {
   type SortColumn,
@@ -158,6 +160,10 @@ export default function ProjectionsPage() {
   const [rows, setRows] = useState<Projection[]>([])
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [updating, setUpdating] = useState(false)
+  const [refreshResult, setRefreshResult] = useState<ProjectionRefresh | null>(
+    null,
+  )
   const [search, setSearch] = useState('')
   const [position, setPosition] = useState<PositionFilter>('All')
   const [teams, setTeams] = useState<string[]>([])
@@ -168,6 +174,7 @@ export default function ProjectionsPage() {
 
     setLoading(true)
     setError(null)
+    setRefreshResult(null)
 
     fetchProjections({ source, season: DEFAULT_PROJECTION_SEASON })
       .then((data) => {
@@ -222,6 +229,30 @@ export default function ProjectionsPage() {
 
   const lastImported = latestImportedAt(rows)
 
+  async function handleUpdateFromSource() {
+    setUpdating(true)
+    setError(null)
+    try {
+      const result = await refreshProjections({
+        source,
+        season: DEFAULT_PROJECTION_SEASON,
+      })
+      setRefreshResult(result)
+      const data = await fetchProjections({
+        source,
+        season: DEFAULT_PROJECTION_SEASON,
+      })
+      setRows(data)
+    } catch (err: unknown) {
+      setRefreshResult(null)
+      setError(
+        err instanceof Error ? err.message : 'Failed to refresh projections',
+      )
+    } finally {
+      setUpdating(false)
+    }
+  }
+
   function handleSort(column: SortColumn) {
     setSort((current) => {
       if (current?.column === column) {
@@ -253,14 +284,21 @@ export default function ProjectionsPage() {
           teams={teams}
           onTeamsChange={setTeams}
           extraTeams={extraTeams}
+          onUpdateFromSource={handleUpdateFromSource}
+          updating={updating}
         />
         {error ? <Alert severity="error">{error}</Alert> : null}
-        {lastImported && !error ? (
+        {refreshResult && !error ? (
+          <Typography>
+            Imported {refreshResult.player_count} players. Last imported:{' '}
+            {new Date(refreshResult.imported_at).toLocaleString()}
+          </Typography>
+        ) : lastImported ? (
           <Typography>
             Last imported: {new Date(lastImported).toLocaleString()}
           </Typography>
         ) : null}
-        {error ? null : loading ? (
+        {loading ? (
           <Typography>Loading projections…</Typography>
         ) : (
           <ProjectionsTable

@@ -42,6 +42,19 @@ export type Projection = {
   espn_roto_rank: number | null
 }
 
+export type ProjectionRefresh = {
+  source: string
+  season: number
+  player_count: number
+  imported_at: string
+}
+
+const REFRESH_ERROR_MESSAGES: Record<string, string> = {
+  espn_credentials_missing: 'ESPN credentials are missing',
+  espn_fetch_failed: 'Failed to fetch projections from source',
+  unknown_source: 'Unknown projection source',
+}
+
 export async function fetchProjections(options?: {
   source?: string
   season?: number
@@ -57,4 +70,34 @@ export async function fetchProjections(options?: {
     throw new Error(`Failed to load projections (${response.status})`)
   }
   return (await response.json()) as Projection[]
+}
+
+export async function refreshProjections(options?: {
+  source?: string
+  season?: number
+}): Promise<ProjectionRefresh> {
+  const source = options?.source ?? DEFAULT_PROJECTION_SOURCE
+  const season = options?.season ?? DEFAULT_PROJECTION_SEASON
+  const response = await fetch('/api/projections/refresh', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ source, season }),
+  })
+  if (!response.ok) {
+    throw new Error(await refreshErrorMessage(response))
+  }
+  return (await response.json()) as ProjectionRefresh
+}
+
+async function refreshErrorMessage(response: Response): Promise<string> {
+  try {
+    const body = (await response.json()) as { error?: string }
+    if (body.error && REFRESH_ERROR_MESSAGES[body.error]) {
+      return REFRESH_ERROR_MESSAGES[body.error]
+    }
+    if (body.error) return body.error
+  } catch {
+    // non-JSON error bodies still map to a status message
+  }
+  return `Failed to refresh projections (${response.status})`
 }

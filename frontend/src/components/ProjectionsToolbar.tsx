@@ -1,3 +1,4 @@
+import Button from '@mui/material/Button'
 import FormControl from '@mui/material/FormControl'
 import InputLabel from '@mui/material/InputLabel'
 import MenuItem from '@mui/material/MenuItem'
@@ -79,6 +80,8 @@ type ProjectionsToolbarProps = {
   teams: string[]
   onTeamsChange: (teams: string[]) => void
   extraTeams?: string[]
+  onUpdateFromSource?: () => void
+  updating?: boolean
 }
 
 export default function ProjectionsToolbar({
@@ -91,6 +94,8 @@ export default function ProjectionsToolbar({
   teams,
   onTeamsChange,
   extraTeams = [],
+  onUpdateFromSource,
+  updating = false,
 }: ProjectionsToolbarProps) {
   const sourceLabel = SOURCE_LABELS[source] ?? source
   const teamOptions = nbaTeamOptions(extraTeams)
@@ -166,6 +171,15 @@ export default function ProjectionsToolbar({
           ))}
         </Select>
       </FormControl>
+      <Button
+        variant="contained"
+        size="small"
+        onClick={onUpdateFromSource}
+        disabled={updating}
+        loading={updating}
+      >
+        Update from source
+      </Button>
     </Stack>
   )
 }

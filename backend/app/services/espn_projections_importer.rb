@@ -13,6 +13,13 @@ class EspnProjectionsImporter
     imported_at = Time.current
     mapped = entries.map { |entry| map_player(entry, imported_at) }
     persist(mapped)
+
+    {
+      source: SOURCE,
+      season: Espn::SEASON,
+      player_count: mapped.size,
+      imported_at: imported_at
+    }
   end
 
   private
@@ -76,18 +83,14 @@ class EspnProjectionsImporter
 
     def persist(mapped)
       ActiveRecord::Base.transaction do
+        PlayerProjection.where(source: SOURCE, season: Espn::SEASON).delete_all
+
         mapped.each do |row|
           player = Player.find_or_initialize_by(espn_player_id: row[:player_attrs][:espn_player_id])
           player.assign_attributes(row[:player_attrs])
           player.save!
 
-          projection = PlayerProjection.find_or_initialize_by(
-            player_id: player.id,
-            source: SOURCE,
-            season: Espn::SEASON
-          )
-          projection.assign_attributes(row[:projection_attrs])
-          projection.save!
+          PlayerProjection.create!(row[:projection_attrs].merge(player_id: player.id))
         end
       end
     end
