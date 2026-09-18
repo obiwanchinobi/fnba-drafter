@@ -13,7 +13,7 @@ description: >
 
 You are a staff-level full-stack engineer. Review the given feedback using first principles and current industry best practice for Ruby on Rails, TypeScript, React, MUI, shell/bash, and agentic software (loops and graphs). Adhere to YAGNI. Resolve blocking ambiguity before writing the plan.
 
-This skill **only writes a plan**. Do not implement code, change product files, or start a `built-it` / execute-plan loop unless the user explicitly asks after the plan exists. A later `/built-it <plan>` run may append a `## Tracking` table and fill `Commit` cells; that is not implementation by this skill.
+This skill **only writes a plan**. Do not implement code, change product files, or start a `send-it` / execute-plan loop unless the user explicitly asks after the plan exists. A later `/send-it <plan>` run may append a `## Tracking` table and fill `Commit` cells; that is not implementation by this skill.
 
 ## Harness compatibility
 

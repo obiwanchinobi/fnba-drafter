@@ -1,17 +1,17 @@
 ---
-name: built-it
+name: send-it
 description: >
   Execute a spec-it plan by dispatching worktree-isolated implementer
   subagents in parallel, then merging each row's commit serially via
   cherry-pick, with one bounded retry on stale-base conflicts. Reads the
   plan file `/spec-it` writes (typically `docs/tmp/*.md`). Use when the
-  user runs /built-it, $built-it, or Use built-it:; asks to orchestrate
-  or implement a spec-it plan; or to execute the file created by spec-it
-  or ship-it. Discussing or editing this skill is not a request to
-  implement.
+  user runs /send-it, $send-it, or Use send-it:; also /built-it,
+  $built-it, or Use built-it:; asks to orchestrate or implement a
+  spec-it plan; or to execute the file created by spec-it or ship-it.
+  Discussing or editing this skill is not a request to implement.
 ---
 
-# Built-it
+# Send-it
 
 You are the **orchestrator**. Work through every dispatchable row in the spec-it plan named by the invocation. The execution model:
 
@@ -25,7 +25,7 @@ This repository has no `/ship-it` skill. The plan producer is `/spec-it`. If the
 
 The checkpoint depends on whether the seed is **durable** (tracked by git) or **ephemeral** (`docs/tmp/`, gitignored):
 
-- **Durable** — checkpoint is a `Refs: built-it row <id> of <doc-basename>` trailer on each feature commit (`<id>` is the tracking `#` cell, e.g. `R2`). Resume greps `git log`. Cherry-pick preserves the trailer.
+- **Durable** — checkpoint is a `Refs: send-it row <id> of <doc-basename>` trailer on each feature commit (`<id>` is the tracking `#` cell, e.g. `R2`). Resume greps `git log`. Cherry-pick preserves the trailer.
 - **Ephemeral** — checkpoint is the `Commit` cell in the doc's `## Tracking` table, written after each successful cherry-pick. No trailer. Resume re-reads the cells.
 
 Do not implement merely because this file was discussed or edited.
@@ -48,7 +48,7 @@ If worktree isolation cannot be created for a code row, STOP. Do not implement t
 
 ## Phase 0 — Read and classify
 
-1. Resolve the seed path from native arguments, the token after `Use built-it:`, a file path in the current message, or a spec-it plan path already stated in this conversation. A token is a file when it exists (repo-relative or absolute). Read the complete file. If it is missing, check `docs/tmp/done/<basename>`: if present, the run already completed — report that path and stop. Otherwise stop and ask for the spec-it plan path. Do not guess the latest `docs/tmp/` file.
+1. Resolve the seed path from native arguments, the token after `Use send-it:` or `Use built-it:`, a file path in the current message, or a spec-it plan path already stated in this conversation. A token is a file when it exists (repo-relative or absolute). Read the complete file. If it is missing, check `docs/tmp/done/<basename>`: if present, the run already completed — report that path and stop. Otherwise stop and ask for the spec-it plan path. Do not guess the latest `docs/tmp/` file.
 2. Confirm `git status` is clean. If not, stop — uncommitted work would entangle with orchestrator commits.
 3. Record `git stash list` output (Phase 2 pre-flight tripwire) and `git rev-parse HEAD` (Phase 3 range).
 4. Classify `seed_doc_kind`: any `/docs/tmp/` segment in the resolved path → `ephemeral`; else `durable`.
@@ -94,7 +94,7 @@ If worktree isolation cannot be created for a code row, STOP. Do not implement t
 
       ## Execution protocol
 
-      `built-it` dispatches up to `concurrency_cap` worktree-isolated implementers per batch, then cherry-picks in table order. One auto-heal retry per stale-base conflict. Ephemeral checkpoint = Commit cell (no trailer). Durable checkpoint = `Refs: built-it row <id> of <doc-basename>` trailer. Meta-doc rows apply on the orchestrator branch. Do not commit this file.
+      `send-it` dispatches up to `concurrency_cap` worktree-isolated implementers per batch, then cherry-picks in table order. One auto-heal retry per stale-base conflict. Ephemeral checkpoint = Commit cell (no trailer). Durable checkpoint = `Refs: send-it row <id> of <doc-basename>` trailer. Meta-doc rows apply on the orchestrator branch. Do not commit this file.
       ```
 
       Include `Depends on` and/or `Parallel-safe` columns when step 2 produced any. `Parallel-safe` is `false` only when the row must run alone even with no file overlap; default `true` if the column is absent.
@@ -114,8 +114,8 @@ All three must hold on the orchestrator branch:
 1. Clean `git status`.
 2. `git stash list` equals the Phase 0 baseline. Drift → STOP.
 3. `HEAD` is either the starting commit or a feature commit from this run.
-   - Durable: `git show -s --format=%B HEAD` contains `Refs: built-it row <id> of <doc-basename>`. Missing on a post-start HEAD → STOP.
-   - Ephemeral: HEAD must **not** carry a `Refs: built-it row` trailer. The short SHA of HEAD must appear in some row's `Commit` cell; unclaimed SHA → STOP (merge landed, cell write did not).
+   - Durable: `git show -s --format=%B HEAD` contains `Refs: send-it row <id> of <doc-basename>`. Missing on a post-start HEAD → STOP.
+   - Ephemeral: HEAD must **not** carry a `Refs: send-it row` trailer. The short SHA of HEAD must appear in some row's `Commit` cell; unclaimed SHA → STOP (merge landed, cell write did not).
 
 Then `batch_base_sha = git rev-parse HEAD`.
 
@@ -126,7 +126,7 @@ Re-read the doc. Done rows: durable → grep trailers; ephemeral → non-empty `
 ```
 git log HEAD --format='COMMIT %h%n%B' | \
   awk '/^COMMIT / { sha=$2; next } { print sha, $0 }' | \
-  grep -E '^[a-f0-9]+ Refs: built-it row ' | \
+  grep -E '^[a-f0-9]+ Refs: send-it row ' | \
   grep -F -- 'of <doc-basename>'
 ```
 
@@ -157,7 +157,7 @@ One parent message containing one spawn per batch row.
   - **Tests-as-oracle:** for new behavior, bug fixes, CLI/API contracts, or scoring math, a spec-derived failing test (or failing reproduction) must be observed before the production edit. Docs, comments, ignore rules, and skill prose: test-first N/A. Do not invent `rspec` / `vitest` / `npm` until those tools exist in the worktree. A red from missing imports or an empty suite is not a valid red. Do not weaken tests, add skips, or shrink coverage to go green.
   - **DoD:** the row's DoD cell must exit 0 inside the worktree. Also run §DoD discovery commands that apply to the touched files.
   - Conventional commit; one item; no `--no-verify`; no co-author/trailer attribution lines.
-  - Trailer: durable → body ends with a blank line then exactly `Refs: built-it row <id> of <doc-basename>` (`<id>` = tracking `#` cell). Ephemeral → no `Refs: built-it row` line.
+  - Trailer: durable → body ends with a blank line then exactly `Refs: send-it row <id> of <doc-basename>` (`<id>` = tracking `#` cell). Ephemeral → no `Refs: send-it row` line.
   - The **Commit-message hygiene** and **Git safety** blocks below, verbatim.
 
 **Collecting.** Top-level: wait until every row returned, then §2.4. Nested (child completion goes to the caller, not you): after the spawn calls, end the turn with only:
@@ -208,7 +208,7 @@ Apply on the orchestrator branch, one conventional commit per row (`docs(skills)
 1. **SHA.** `git -C <worktree-path> rev-parse HEAD` equals the reported SHA (or, if skipped, the SHA is reachable as above). Else STOP.
 2. **Count.** `git -C <worktree-path> rev-list --count <batch_base_sha>..HEAD` equals `1`. `> 1` → STOP (cherry-pick would drop non-tip commits).
 3. **Scope.** `git -C <worktree-path> diff --name-only <batch_base_sha>..HEAD` versus declared `File(s)`. A declared path matches that file or files under it. Co-located test companions of declared production files are in-scope (see §Scope). If a non-companion delta remains, ask: Accept and cherry-pick (recommended) / Reject and re-dispatch (counts as the one retry) / Inspect (STOP, leave worktree). Nested: `DECISION NEEDED` with the same options.
-4. **Message.** Durable: exact trailer line present, else STOP. Ephemeral: any `Refs: built-it row` line → STOP. Hygiene violation → auto-heal in the worktree: strip `(R\d+)` subject suffixes and body lines that name the doc basename, `row N`, or requirement ids outside a `Refs:` trailer; `git commit --amend -m`; re-check count == 1. Still dirty after strip → STOP. Trailer-state errors are never stripped.
+4. **Message.** Durable: exact trailer line present, else STOP. Ephemeral: any `Refs: send-it row` line → STOP. Hygiene violation → auto-heal in the worktree: strip `(R\d+)` subject suffixes and body lines that name the doc basename, `row N`, or requirement ids outside a `Refs:` trailer; `git commit --amend -m`; re-check count == 1. Still dirty after strip → STOP. Trailer-state errors are never stripped.
 5. **Cherry-pick** (skip if `worktree_skipped`): `git cherry-pick <verified-sha>` (no `-x`).
 6. **Conflict → auto-heal.** `git cherry-pick --abort`. Cleanup that worktree (operations table). If this row already retried once → STOP (semantic conflict): report files and remaining batch worktrees. Else `retry_base_sha = git rev-parse HEAD`, dispatch one fresh worktree from current HEAD, re-verify using `retry_base_sha` in place of `batch_base_sha`, cherry-pick. Second conflict → STOP. If the retry reports no diff: write `noop-via-<id>` (or `noop`), cleanup, continue — no empty commit.
 7. **Post-merge.** Durable: nothing (trailer is the checkpoint). Ephemeral: write the short SHA into that row's `Commit` cell. Do not commit the doc.
@@ -233,7 +233,7 @@ Then next batch at §2.1.
 1. **Durable only:** fill each `Commit` cell from the trailer grep. Ephemeral cells are already filled.
 2. **Feature DoD.** If the plan names whole-feature verification commands, run those. Else from `git diff --name-only <starting-head>..HEAD` run §DoD discovery on the union. Record skipped checks (tool missing) as blocked, not passed.
 3. **Report:** rows shipped and commit range; auto-healed; no-ops; `worktree_skipped`; meta-doc applied vs held; archive path or "left in place — git-tracked"; informative/rejected rows not dispatched; any open holds. Do not claim the user accepted the work.
-4. Set the spec-it header `Status` to `built-it complete` (or `built-it blocked` on STOP). Do not rewrite Original input, decisions, or proposed solutions.
+4. Set the spec-it header `Status` to `send-it complete` (or `send-it blocked` on STOP). Do not rewrite Original input, decisions, or proposed solutions.
 5. **Archive ephemeral only**, last: `mkdir -p docs/tmp/done && mv <path> docs/tmp/done/<basename>`. If the destination exists, do not clobber — report and leave the source. Durable docs stay put.
 6. Do not push, open a PR, squash, or rebase.
 
@@ -286,7 +286,7 @@ Auto-heal is only: stale-base conflict, hygiene strip, worktree-skip with valid 
 
 ## Resume
 
-Fresh session, same branch: `/built-it <same path>`. Phase 0 re-classifies; existing tracking skips bootstrap. Durable: trailers decide done rows; starting HEAD is the parent of the first trailer. Ephemeral: empty `Commit` cells are remaining; starting HEAD is the parent of the latest recorded SHA.
+Fresh session, same branch: `/send-it <same path>` (or `/built-it`). Phase 0 re-classifies; existing tracking skips bootstrap. Durable: trailers decide done rows; starting HEAD is the parent of the first trailer. Ephemeral: empty `Commit` cells are remaining; starting HEAD is the parent of the latest recorded SHA.
 
 Stranded isolation worktrees are not auto-removed. Remove only a path you have inspected, with the harness remove command in the operations table.
 

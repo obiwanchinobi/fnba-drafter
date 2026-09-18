@@ -10,10 +10,10 @@ CLAUDE.md                           Imports @AGENTS.md
 .agents/skills/spec-it/
   SKILL.md                          Canonical planning workflow
   references/ai-feature-planning.md  Shared conditional guidance
-.agents/skills/built-it/
+.agents/skills/send-it/
   SKILL.md                          Canonical execution workflow
 .claude/skills/spec-it               Symlink to ../../.agents/skills/spec-it
-.claude/skills/built-it              Symlink to ../../.agents/skills/built-it
+.claude/skills/send-it               Symlink to ../../.agents/skills/send-it
 scripts/check_shared_skills.py       Checks repository layout for drift
 ```
 
@@ -25,14 +25,14 @@ The symlink is relative and tracked in Git, so it resolves inside a new clone or
 
 ## Invocation
 
-| Interface | `spec-it` | `built-it` |
+| Interface | `spec-it` | `send-it` |
 |---|---|---|
-| Shared prompt convention | `Use spec-it: <file path or feedback>` | `Use built-it: <plan path>` |
-| Grok Build | `/spec-it <file path or feedback>` | `/built-it <plan path>` |
-| Claude Code | `/spec-it <file path or feedback>` | `/built-it <plan path>` |
-| Codex CLI/IDE | `$spec-it <file path or feedback>` or `/skills` | `$built-it <plan path>` or `/skills` |
+| Shared prompt convention | `Use spec-it: <file path or feedback>` | `Use send-it: <plan path>` |
+| Grok Build | `/spec-it <file path or feedback>` | `/send-it <plan path>` |
+| Claude Code | `/spec-it <file path or feedback>` | `/send-it <plan path>` |
+| Codex CLI/IDE | `$spec-it <file path or feedback>` or `/skills` | `$send-it <plan path>` or `/skills` |
 
-The shared wording tells the agent to load the named skill; it is not a universal slash-command registration. Use the client's skill selector for explicit UI selection where available. A shared file does not register `/spec-it` or `/built-it` in Codex. Merely discussing or editing a skill is not a request to execute it. `built-it` reads a spec-it plan file; this repository has no `/ship-it` skill.
+The shared wording tells the agent to load the named skill; it is not a universal slash-command registration. Use the client's skill selector for explicit UI selection where available. A shared file does not register `/spec-it` or `/send-it` in Codex. Merely discussing or editing a skill is not a request to execute it. `send-it` reads a spec-it plan file; this repository has no `/ship-it` skill. `/built-it` is the former name of `/send-it`.
 
 ## Authoring and updates
 
@@ -44,7 +44,7 @@ The shared wording tells the agent to load the named skill; it is not a universa
 
 Both harnesses editing the same checkout change the same files. Separate branches/worktrees still require Git merging, and an already-loaded conversation can retain older instructions. Use fresh sessions for verification after changing a skill. Check personal/plugin overrides if a loader reports another source path.
 
-`spec-it` keeps its plan template (including harness and live model-with-effort provenance), requirement decisions, read-only data review, and plan-only boundary. Its former Grok `build-with-ai` dependency is now an explicit [shared planning reference](../../.agents/skills/spec-it/references/ai-feature-planning.md), retaining the original SpaceXAI default unless the user or repository specifies otherwise. `built-it` keeps worktree-isolated dispatch, serial cherry-pick, bounded stale-base auto-heal, and the spec-it tracking checkpoint; it does not implement because a plan was discussed. No private skill cache is required.
+`spec-it` keeps its plan template (including harness and live model-with-effort provenance), requirement decisions, read-only data review, and plan-only boundary. Its former Grok `build-with-ai` dependency is now an explicit [shared planning reference](../../.agents/skills/spec-it/references/ai-feature-planning.md), retaining the original SpaceXAI default unless the user or repository specifies otherwise. `send-it` keeps worktree-isolated dispatch, serial cherry-pick, bounded stale-base auto-heal, and the spec-it tracking checkpoint; it does not implement because a plan was discussed. No private skill cache is required.
 
 ## Verification
 
@@ -56,7 +56,7 @@ python3 /path/to/fnba-drafter/scripts/check_shared_skills.py
 
 The checker verifies canonical skill directories, Claude discovery links, the `CLAUDE.md` import, and absence of alternative repository skill definitions. It does not invoke models, inspect personal configuration, validate all skill semantics, or prove behavioral parity. It is a required local check; this repository does not currently configure CI to run it automatically.
 
-After migration or a loader upgrade, inspect `grok inspect` and the Claude/Codex skill selectors in fresh sessions. Confirm `spec-it` and `built-it` resolve to their canonical directories (possibly through the Claude symlink) and that shared project instructions loaded. If a skill does not appear, check project trust, disabled skills, name overrides, and symlink handling; do not fix discovery by copying the skill.
+After migration or a loader upgrade, inspect `grok inspect` and the Claude/Codex skill selectors in fresh sessions. Confirm `spec-it` and `send-it` resolve to their canonical directories (possibly through the Claude symlink) and that shared project instructions loaded. If a skill does not appear, check project trust, disabled skills, name overrides, and symlink handling; do not fix discovery by copying the skill.
 
 For substantive workflow updates, run these cases in disposable worktrees on the same Git revision with each available harness. Compare evidence and acceptance criteria, not identical wording. Record harness/model versions, failures, and unavailable checks in the change report.
 
@@ -71,7 +71,7 @@ For substantive workflow updates, run these cases in disposable worktrees on the
 | AI feature requirement | Shared AI planning reference used; provider assumption and current-doc evidence stated; no bundled-skill dependency |
 | Every completed plan | Timestamped file under ignored `docs/tmp/`; header records harness and the live session model with effort; no implementation or plan commit; source/template/index preserved |
 
-`built-it`:
+`send-it`:
 
 | Case | Acceptance criteria |
 |---|---|
@@ -84,7 +84,7 @@ For substantive workflow updates, run these cases in disposable worktrees on the
 | Isolation unavailable for a code row | Stops; does not implement on the orchestrator branch |
 | Clean parallel batch | One commit per worktree; serial cherry-pick in table order; ephemeral `Commit` cells filled (no trailer) |
 | Stale-base cherry-pick | Abort, one re-dispatch from current HEAD, second conflict stops |
-| Durable seed | `Refs: built-it row <id> of <basename>` trailer present; cells filled in Phase 3 |
+| Durable seed | `Refs: send-it row <id> of <basename>` trailer present; cells filled in Phase 3 |
 
 Use those same cases to investigate differences between harnesses. Sharing source prevents divergent maintained copies; model quality, tools, permissions, context, and instruction precedence still affect outcomes.
 
