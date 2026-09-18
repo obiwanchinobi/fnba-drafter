@@ -148,12 +148,15 @@ export default function ProjectionsToolbar({
         ))}
       </ToggleButtonGroup>
       <FormControl size="small" sx={{ minWidth: 160 }}>
-        <InputLabel id="projections-team-label">NBA team</InputLabel>
+        <InputLabel id="projections-team-label" shrink>
+          NBA team
+        </InputLabel>
         <Select
           labelId="projections-team-label"
           id="projections-team"
           multiple
           displayEmpty
+          notched
           label="NBA team"
           value={teams}
           onChange={(event) => {

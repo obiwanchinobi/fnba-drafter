@@ -129,6 +129,19 @@ test('Update from source is disabled with a loading spinner while updating', () 
   expect(screen.getByRole('progressbar')).toBeInTheDocument()
 })
 
+test('empty NBA team field shows All with a shrunk floating label', () => {
+  renderToolbar(
+    <ProjectionsToolbar source="espn" {...idleHandlers} teams={[]} />,
+  )
+
+  const teamSelect = screen.getByRole('combobox', { name: /nba team/i })
+  expect(teamSelect).toHaveTextContent('All')
+  expect(document.getElementById('projections-team-label')).toHaveAttribute(
+    'data-shrink',
+    'true',
+  )
+})
+
 test('NBA team options include extra abbrevs from loaded rows', () => {
   renderToolbar(
     <ProjectionsToolbar
