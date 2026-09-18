@@ -66,3 +66,7 @@ python3 scripts/check_supply_chain.py
 
 - `backend/` — Rails 8 API-only app (`FnbaDrafter`)
 - `frontend/` — Vite + React 19 + MUI SPA
+
+## Worktrees
+
+Human feature work uses `fnba-cli wt` / `fnba-cli wt-remove`. Each worktree gets isolated Postgres databases cloned from main (`fnba-cli wt-refresh-db` bootstraps an existing checkout). See [docs/architecture/worktrees.md](docs/architecture/worktrees.md).

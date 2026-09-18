@@ -3,14 +3,15 @@
 # FNBA repo CLI. Committed entry point for worktree helpers; alias this as fnba-cli.
 #
 # Usage:
-#   fnba-cli                                Interactive menu (create / remove)
-#   fnba-cli wt [branch]                    Create a worktree (fast path requires main)
+#   fnba-cli                                Interactive menu (create / refresh / remove)
+#   fnba-cli wt [branch] [--no-db]          Create a worktree (fast path requires main)
+#   fnba-cli wt-refresh-db [-y] [--no-migrate]
 #   fnba-cli wt-remove [branch] [-y] [--force]
 #   fnba-cli shell-init                     Print `alias fnba-cli=...` for ~/.zshrc
 #   fnba-cli help
 #
-# Direct script names also work: bin/git-wt, bin/git-wt-remove.
-# Subcommand aliases: git-wt, git-wt-remove, remove.
+# Direct script names also work: bin/git-wt, bin/git-wt-refresh-db, bin/git-wt-remove.
+# Subcommand aliases: git-wt, git-wt-refresh-db, refresh-db, git-wt-remove, remove.
 
 set -euo pipefail
 
@@ -24,14 +25,17 @@ fnba-cli — FNBA worktree CLI (this repository only)
 
 Commands:
   (no args)                           Interactive menu
-  wt [branch]                         Create a worktree under ../fnba-drafter-worktrees/
-  wt-remove [branch] [-y] [--force]   Remove a worktree and delete its local branch
+  wt [branch] [--no-db]               Create a worktree under ../fnba-drafter-worktrees/
+  wt-refresh-db [-y] [--no-migrate]   Bootstrap or refresh this worktree's isolated DBs
+  wt-remove [branch] [-y] [--force]   Remove a worktree, drop its DBs, and delete its local branch
   shell-init                          Print the alias line to add to ~/.zshrc
   help                                Show this help
 
 Examples:
   fnba-cli
   fnba-cli wt ft/board
+  fnba-cli wt ft/board --no-db
+  fnba-cli wt-refresh-db
   fnba-cli wt-remove ft/board -y
   eval "\$(/path/to/fnba-drafter/bin/fnba-cli shell-init)"
 
@@ -46,7 +50,8 @@ interactive_root() {
     echo -e "${MAGENTA}═══════════════════════════════════════════════════════════${NC}"
     echo ""
     echo -e "  ${CYAN}1)${NC} Create a worktree"
-    echo -e "  ${CYAN}2)${NC} Remove a worktree"
+    echo -e "  ${CYAN}2)${NC} Refresh this worktree's DB"
+    echo -e "  ${CYAN}3)${NC} Remove a worktree"
     echo -e "  ${CYAN}h)${NC} Help"
     echo ""
     while true; do
@@ -59,6 +64,10 @@ interactive_root() {
                 exec "${BIN_DIR}/git-wt"
                 ;;
             2)
+                echo ""
+                exec "${BIN_DIR}/git-wt-refresh-db"
+                ;;
+            3)
                 echo ""
                 exec "${BIN_DIR}/git-wt-remove"
                 ;;
@@ -90,6 +99,9 @@ case "$cmd" in
         ;;
     wt|git-wt)
         exec "${BIN_DIR}/git-wt" "$@"
+        ;;
+    wt-refresh-db|git-wt-refresh-db|refresh-db)
+        exec "${BIN_DIR}/git-wt-refresh-db" "$@"
         ;;
     wt-remove|git-wt-remove|remove)
         exec "${BIN_DIR}/git-wt-remove" "$@"

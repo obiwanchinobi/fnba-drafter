@@ -3,15 +3,24 @@
 # Create an FNBA git worktree under ../fnba-drafter-worktrees/.
 #
 # Usage:
-#   fnba-cli wt <branch-name>     # fast path: must be on main; fails on conflicts
-#   fnba-cli wt                   # interactive (prompt loop with retry)
-#   bin/git-wt ...                # same, invoked directly
+#   fnba-cli wt <branch-name>           # fast path: must be on main; fails on conflicts
+#   fnba-cli wt <branch-name> --no-db   # same, skip per-worktree Postgres clone
+#   fnba-cli wt                         # interactive (prompt loop with retry)
+#   fnba-cli wt --no-db                 # interactive, skip DB clone
+#   bin/git-wt ...                      # same, invoked directly
 #
 # Fast path creates the branch from main (or tracks origin/<branch> when that
 # ref exists). Interactive mode creates from the current HEAD when the branch
 # is new.
 #
-# No per-worktree databases, ports, or Caddy — this repo has no app stack yet.
+# After git worktree add, clones fnba_drafter_development → fnba_dev_<slug>
+# and creates an empty fnba_test_<slug>, then writes FNBA_DB_NAME /
+# FNBA_TEST_DB_NAME into backend/.env.local and FNBA_TEST_DB_NAME into
+# backend/.env.test.local. --no-db skips that; the worktree shares main's DBs
+# until fnba-cli wt-refresh-db. Does not run bin/setup or copy node_modules.
+# The new worktree still needs bin/setup before bin/dev / tests.
+#
+# No per-worktree ports or Caddy — one bin/dev on 3000/5173 at a time.
 # cmux opens the new worktree when installed and stdout is a TTY.
 
 set -e
@@ -19,6 +28,8 @@ set -e
 BIN_DIR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=lib/fnba-wt-common.sh
 . "${BIN_DIR}/lib/fnba-wt-common.sh"
+# shellcheck source=lib/fnba-wt-db.sh
+. "${BIN_DIR}/lib/fnba-wt-db.sh"
 
 fnba_require_git
 fnba_require_repo
@@ -30,9 +41,11 @@ usage() {
     awk 'NR > 2 { if ($0 !~ /^#/) exit; print }' "$0" | sed 's/^# \{0,1\}//'
 }
 
+NO_DB=false
 POSITIONAL_ARGS=()
 for arg in "$@"; do
     case "$arg" in
+        --no-db) NO_DB=true ;;
         -h|--help)
             usage
             exit 0
@@ -58,6 +71,15 @@ create_worktree() {
         git worktree add -b "$branch" "$worktree_path" "$start_point"
     fi
     echo -e "${GREEN}✅ ${branch} → ${worktree_path}${NC}"
+
+    if [ "$NO_DB" = true ]; then
+        echo -e "${CYAN}Skipping per-worktree DB setup (--no-db); worktree shares main's databases until fnba-cli wt-refresh-db${NC}"
+    elif fnba_setup_worktree_dbs "$worktree_path" "$branch"; then
+        :
+    else
+        echo -e "${YELLOW}DB setup failed — worktree still exists and shares main's DBs until fnba-cli wt-refresh-db${NC}" >&2
+    fi
+    echo -e "${CYAN}Worktree still needs bin/setup before bin/dev / tests.${NC}"
 
     if [ -t 1 ] && command -v cmux >/dev/null 2>&1; then
         cmux "$worktree_path" || true

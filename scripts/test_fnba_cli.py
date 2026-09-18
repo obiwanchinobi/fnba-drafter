@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Tests for bin/fnba-cli, bin/git-wt, and bin/git-wt-remove."""
 
+import json
 import os
 import shutil
+import stat
 import subprocess
 import tempfile
 import unittest
@@ -10,6 +12,86 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 CLI = REPO_ROOT / "bin" / "fnba-cli"
+
+FAKE_PG_SCRIPT = r"""#!/usr/bin/env python3
+import json
+import os
+import re
+import sys
+from pathlib import Path
+
+state_path = Path(os.environ["FNBA_FAKE_PG_STATE"])
+log_path = Path(os.environ["FNBA_FAKE_PG_LOG"])
+cmd = Path(sys.argv[0]).name
+args = sys.argv[1:]
+log_path.parent.mkdir(parents=True, exist_ok=True)
+with log_path.open("a", encoding="utf-8") as handle:
+    handle.write(cmd + (" " + " ".join(args) if args else "") + "\n")
+
+
+def load_state():
+    if state_path.exists():
+        return json.loads(state_path.read_text(encoding="utf-8"))
+    return {"dbs": ["fnba_drafter_development"]}
+
+
+def save_state(state):
+    state_path.write_text(json.dumps(state), encoding="utf-8")
+
+
+state = load_state()
+dbs = set(state.get("dbs", []))
+
+if cmd == "createdb":
+    if args[:1] == ["-T"]:
+        src, target = args[1], args[2]
+        if src not in dbs:
+            sys.exit(1)
+        dbs.add(target)
+        save_state({"dbs": sorted(dbs)})
+        sys.exit(0)
+    target = args[-1]
+    dbs.add(target)
+    save_state({"dbs": sorted(dbs)})
+    sys.exit(0)
+
+if cmd == "dropdb":
+    dbs.discard(args[-1])
+    save_state({"dbs": sorted(dbs)})
+    sys.exit(0)
+
+if cmd == "pg_dump":
+    src = args[-1]
+    if src not in dbs:
+        sys.exit(1)
+    print("-- fake dump")
+    sys.exit(0)
+
+if cmd == "psql":
+    if "-lqt" in args or "-l" in args:
+        for db in sorted(dbs):
+            print(f" {db} | owner | UTF8")
+        sys.exit(0)
+    query = ""
+    if "-Atc" in args:
+        query = args[args.index("-Atc") + 1]
+    elif "-c" in args:
+        query = args[args.index("-c") + 1]
+        sys.exit(0)
+    if "LIKE" in query.upper():
+        match = re.search(r"LIKE '([^']+)'", query)
+        pat = match.group(1) if match else ""
+        prefix = pat.replace("\\_", "_")
+        if prefix.endswith("%"):
+            prefix = prefix[:-1]
+        for db in sorted(dbs):
+            if db.startswith(prefix):
+                print(db)
+        sys.exit(0)
+    sys.exit(0)
+
+sys.exit(0)
+"""
 
 
 def run(args, cwd, env=None, input_text=None):
@@ -40,7 +122,7 @@ def git(cwd, *args):
     return result
 
 
-class FnbaCliTest(unittest.TestCase):
+class FnbaCliHarness(unittest.TestCase):
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp(prefix="fnba-cli-"))
         self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
@@ -54,8 +136,41 @@ class FnbaCliTest(unittest.TestCase):
         git(self.repo, "add", "README.md")
         git(self.repo, "commit", "-m", "init")
 
-    def cli(self, *args, cwd=None, input_text=None):
-        return run([str(CLI), *args], cwd or self.repo, input_text=input_text)
+    def cli(self, *args, cwd=None, input_text=None, env=None):
+        return run(
+            [str(CLI), *args], cwd or self.repo, env=env, input_text=input_text
+        )
+
+    def install_fake_pg(self):
+        fake_bin = self.tmp / "fake-pg-bin"
+        fake_bin.mkdir()
+        script = fake_bin / "_fake_pg.py"
+        script.write_text(FAKE_PG_SCRIPT)
+        script.chmod(script.stat().st_mode | stat.S_IEXEC)
+        for name in ("psql", "createdb", "dropdb", "pg_dump"):
+            dest = fake_bin / name
+            dest.symlink_to(script)
+        state = self.tmp / "fake-pg-state.json"
+        log = self.tmp / "fake-pg.log"
+        state.write_text(json.dumps({"dbs": ["fnba_drafter_development"]}))
+        log.write_text("")
+        return {
+            "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+            "FNBA_FAKE_PG_STATE": str(state),
+            "FNBA_FAKE_PG_LOG": str(log),
+        }
+
+    def fake_pg_log(self, env):
+        return Path(env["FNBA_FAKE_PG_LOG"]).read_text(encoding="utf-8")
+
+    def add_stub_database_yml(self):
+        yml = self.repo / "backend" / "config" / "database.yml"
+        yml.parent.mkdir(parents=True, exist_ok=True)
+        yml.write_text("test: true\n")
+        gitignore = self.repo / "backend" / ".gitignore"
+        gitignore.write_text("/.env*\n")
+        git(self.repo, "add", "backend/config/database.yml", "backend/.gitignore")
+        git(self.repo, "commit", "-m", "stub database.yml")
 
     def worktree_paths(self):
         result = git(self.repo, "worktree", "list", "--porcelain")
@@ -69,11 +184,14 @@ class FnbaCliTest(unittest.TestCase):
         result = git(self.repo, "for-each-ref", "--format=%(refname:short)", "refs/heads")
         return [line for line in result.stdout.splitlines() if line]
 
+
+class FnbaCliTest(FnbaCliHarness):
     def test_help_and_shell_init(self):
         help_result = self.cli("help")
         self.assertEqual(help_result.returncode, 0, help_result.stderr)
         self.assertIn("fnba-cli wt", help_result.stdout)
         self.assertIn("(no args)", help_result.stdout)
+        self.assertIn("wt-refresh-db", help_result.stdout)
         init = self.cli("shell-init")
         self.assertEqual(init.returncode, 0, init.stderr)
         self.assertIn("alias fnba-cli=", init.stdout)
@@ -83,6 +201,7 @@ class FnbaCliTest(unittest.TestCase):
         result = self.cli(input_text="q\n")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("Create a worktree", result.stdout)
+        self.assertIn("Refresh this worktree's DB", result.stdout)
         self.assertIn("Remove a worktree", result.stdout)
         self.assertIn("Exiting", result.stdout)
 
@@ -115,7 +234,7 @@ class FnbaCliTest(unittest.TestCase):
         created = self.cli("wt", "ft/board")
         self.assertEqual(created.returncode, 0, created.stderr)
         expected = self.tmp / "fnba-drafter-worktrees" / "ft-board"
-        removed = self.cli(input_text="2\n1\ny\n")
+        removed = self.cli(input_text="3\n1\ny\n")
         self.assertEqual(removed.returncode, 0, removed.stdout + removed.stderr)
         self.assertFalse(expected.exists())
         self.assertNotIn("ft/board", self.branches())
@@ -249,6 +368,74 @@ class FnbaCliTest(unittest.TestCase):
         expected = self.tmp / "fnba-drafter-worktrees" / "ft-remote"
         log = git(expected, "log", "-1", "--pretty=%s").stdout.strip()
         self.assertEqual(log, "on remote branch")
+
+
+class FnbaCliWorktreeDbTest(FnbaCliHarness):
+    def setUp(self):
+        super().setUp()
+        self.add_stub_database_yml()
+        self.pg = self.install_fake_pg()
+
+    def env_text(self, worktree, name):
+        return (worktree / "backend" / name).read_text(encoding="utf-8")
+
+    def test_no_db_skips_createdb(self):
+        result = self.cli("wt", "ft/board", "--no-db", env=self.pg)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        expected = self.tmp / "fnba-drafter-worktrees" / "ft-board"
+        self.assertTrue(expected.is_dir(), result.stdout)
+        log = self.fake_pg_log(self.pg)
+        self.assertNotIn("createdb", log)
+        self.assertFalse((expected / "backend" / ".env.local").exists())
+        self.assertFalse((expected / "backend" / ".env.test.local").exists())
+
+    def test_create_writes_isolated_db_env_files(self):
+        result = self.cli("wt", "ft/board", env=self.pg)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        worktree = self.tmp / "fnba-drafter-worktrees" / "ft-board"
+        local = self.env_text(worktree, ".env.local")
+        test_local = self.env_text(worktree, ".env.test.local")
+        self.assertIn("FNBA_DB_NAME=fnba_dev_ft_board", local)
+        self.assertIn("FNBA_TEST_DB_NAME=fnba_test_ft_board", local)
+        self.assertIn("FNBA_TEST_DB_NAME=fnba_test_ft_board", test_local)
+        self.assertNotIn("FNBA_DB_NAME=", test_local)
+        log = self.fake_pg_log(self.pg)
+        self.assertIn("createdb", log)
+        self.assertIn("fnba_dev_ft_board", result.stdout)
+        self.assertIn("fnba_test_ft_board", result.stdout)
+
+    def test_remove_drops_isolated_databases(self):
+        created = self.cli("wt", "ft/board", env=self.pg)
+        self.assertEqual(created.returncode, 0, created.stdout + created.stderr)
+        removed = self.cli("wt-remove", "ft/board", "-y", env=self.pg)
+        self.assertEqual(removed.returncode, 0, removed.stdout + removed.stderr)
+        log = self.fake_pg_log(self.pg)
+        self.assertRegex(log, r"(?m)^dropdb fnba_dev_ft_board$")
+        self.assertRegex(log, r"(?m)^dropdb fnba_test_ft_board$")
+        self.assertIn("fnba_dev_ft_board", removed.stdout)
+        self.assertIn("fnba_test_ft_board", removed.stdout)
+
+    def test_refresh_bootstrap_writes_env_on_linked_worktree(self):
+        created = self.cli("wt", "ft/board", "--no-db", env=self.pg)
+        self.assertEqual(created.returncode, 0, created.stdout + created.stderr)
+        worktree = self.tmp / "fnba-drafter-worktrees" / "ft-board"
+        refreshed = self.cli("wt-refresh-db", cwd=worktree, env=self.pg)
+        self.assertEqual(refreshed.returncode, 0, refreshed.stdout + refreshed.stderr)
+        local = self.env_text(worktree, ".env.local")
+        test_local = self.env_text(worktree, ".env.test.local")
+        self.assertIn("FNBA_DB_NAME=fnba_dev_ft_board", local)
+        self.assertIn("FNBA_TEST_DB_NAME=fnba_test_ft_board", local)
+        self.assertIn("FNBA_TEST_DB_NAME=fnba_test_ft_board", test_local)
+        log = self.fake_pg_log(self.pg)
+        self.assertIn("createdb", log)
+
+    def test_refresh_db_aliases_and_help(self):
+        help_result = self.cli("help")
+        self.assertIn("refresh", help_result.stdout.lower())
+        for command in ("wt-refresh-db", "git-wt-refresh-db", "refresh-db"):
+            result = self.cli(command, "-h")
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertRegex(result.stdout.lower(), r"refresh|bootstrap")
 
 
 if __name__ == "__main__":

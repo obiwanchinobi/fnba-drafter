@@ -1,0 +1,179 @@
+#!/bin/bash
+
+# Refresh or bootstrap this linked worktree's isolated Postgres DBs from
+# fnba_drafter_development, then migrate if a bundle exists.
+#
+# Usage:
+#   fnba-cli wt-refresh-db                # auto-detect mode (bootstrap or refresh)
+#   fnba-cli wt-refresh-db -y             # skip refresh confirmation
+#   fnba-cli wt-refresh-db --no-migrate   # skip post-clone migrations
+#   bin/git-wt-refresh-db ...             # same, invoked directly
+#
+# Two modes, from backend/.env.local (then .env):
+#   refresh   — FNBA_DB_NAME is set: drop and re-clone the existing dev DB.
+#               Test DB is never dropped (Rails repopulates it) but is created
+#               if missing. Prompts before dropping unless -y.
+#   bootstrap — FNBA_DB_NAME is unset: clone source → fnba_dev_<slug>,
+#               createdb empty fnba_test_<slug>, write env files. No confirm.
+#
+# Must run inside a linked worktree, not main, not the primary checkout.
+# Refuses half-state: env names a DB that does not exist, or the slug DB
+# exists but env is unset.
+
+set -e
+
+BIN_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=lib/fnba-wt-common.sh
+. "${BIN_DIR}/lib/fnba-wt-common.sh"
+# shellcheck source=lib/fnba-wt-db.sh
+. "${BIN_DIR}/lib/fnba-wt-db.sh"
+
+usage() {
+    awk 'NR > 2 { if ($0 !~ /^#/) exit; print }' "$0" | sed 's/^# \{0,1\}//'
+}
+
+SKIP_CONFIRM=false
+RUN_MIGRATE=true
+for arg in "$@"; do
+    case "$arg" in
+        -y|--yes) SKIP_CONFIRM=true ;;
+        --no-migrate) RUN_MIGRATE=false ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        -*)
+            fnba_die "Unknown argument: ${arg}"
+            ;;
+        *)
+            fnba_die "Unknown argument: ${arg}"
+            ;;
+    esac
+done
+
+fnba_require_git
+fnba_require_repo
+
+CURRENT_BRANCH=$(git branch --show-current)
+WORKTREE_PATH=$(git rev-parse --show-toplevel)
+PRIMARY=$(fnba_primary_worktree)
+
+if [ "$CURRENT_BRANCH" = "$DEFAULT_BRANCH" ]; then
+    fnba_die "You're on '${DEFAULT_BRANCH}'. This command refreshes a linked worktree's DB."
+fi
+if [ "$WORKTREE_PATH" = "$PRIMARY" ]; then
+    fnba_die "Must run from a linked worktree, not the primary checkout"
+fi
+
+ENV_FILE="${WORKTREE_PATH}/backend/.env"
+ENV_LOCAL="${WORKTREE_PATH}/backend/.env.local"
+ENV_TEST_LOCAL="${WORKTREE_PATH}/backend/.env.test.local"
+
+if [ ! -f "${WORKTREE_PATH}/backend/config/database.yml" ]; then
+    fnba_die "${WORKTREE_PATH}/backend/config/database.yml is missing"
+fi
+if ! command -v psql >/dev/null 2>&1 || ! command -v createdb >/dev/null 2>&1; then
+    fnba_die "psql/createdb not found (install PostgreSQL 16)"
+fi
+if ! fnba_pg_db_exists "$FNBA_SOURCE_DEV_DB"; then
+    fnba_die "source DB ${FNBA_SOURCE_DEV_DB} does not exist"
+fi
+
+ENV_DEV_DB=$(fnba_read_env_var "$ENV_LOCAL" FNBA_DB_NAME)
+[ -z "$ENV_DEV_DB" ] && ENV_DEV_DB=$(fnba_read_env_var "$ENV_FILE" FNBA_DB_NAME)
+
+if [ -z "$ENV_DEV_DB" ]; then
+    MODE="bootstrap"
+    SLUG=$(fnba_db_slug "$CURRENT_BRANCH")
+    TARGET_DB="fnba_dev_${SLUG}"
+    TARGET_TEST_DB="fnba_test_${SLUG}"
+else
+    MODE="refresh"
+    TARGET_DB="$ENV_DEV_DB"
+    TARGET_TEST_DB=$(fnba_read_env_var "$ENV_LOCAL" FNBA_TEST_DB_NAME)
+    [ -z "$TARGET_TEST_DB" ] && TARGET_TEST_DB=$(fnba_read_env_var "$ENV_FILE" FNBA_TEST_DB_NAME)
+    [ -z "$TARGET_TEST_DB" ] && TARGET_TEST_DB=$(fnba_read_env_var "$ENV_TEST_LOCAL" FNBA_TEST_DB_NAME)
+    [ -z "$TARGET_TEST_DB" ] && TARGET_TEST_DB="fnba_test_$(fnba_db_slug "$CURRENT_BRANCH")"
+fi
+
+if [ "$TARGET_DB" = "$FNBA_SOURCE_DEV_DB" ] || ! fnba_db_name_safe "$TARGET_DB"; then
+    fnba_die "target DB '${TARGET_DB}' is not an isolated worktree database"
+fi
+if [ "$TARGET_TEST_DB" = "$FNBA_SHARED_TEST_DB" ] || ! fnba_db_name_safe "$TARGET_TEST_DB"; then
+    fnba_die "test DB '${TARGET_TEST_DB}' is not an isolated worktree database"
+fi
+
+if [ "$MODE" = "refresh" ] && ! fnba_pg_db_exists "$TARGET_DB"; then
+    echo -e "${RED}Error: FNBA_DB_NAME=${TARGET_DB} is set but that database does not exist in Postgres.${NC}" >&2
+    echo -e "${YELLOW}Fix: remove FNBA_DB_NAME and FNBA_TEST_DB_NAME from ${ENV_LOCAL} and re-run to bootstrap, or createdb ${TARGET_DB} manually.${NC}" >&2
+    exit 1
+fi
+
+if [ "$MODE" = "bootstrap" ] && fnba_pg_db_exists "$TARGET_DB"; then
+    echo -e "${RED}Error: dev DB ${TARGET_DB} already exists in Postgres but FNBA_DB_NAME is unset.${NC}" >&2
+    echo -e "${YELLOW}Fix: dropdb ${TARGET_DB} first, or add FNBA_DB_NAME=${TARGET_DB} to ${ENV_LOCAL} and re-run as a refresh.${NC}" >&2
+    exit 1
+fi
+
+echo -e "${CYAN}Worktree:${NC} ${WORKTREE_PATH}"
+echo -e "${CYAN}Branch:  ${NC} ${CURRENT_BRANCH}"
+echo -e "${CYAN}Mode:    ${NC} ${MODE}"
+echo -e "${CYAN}Source:  ${NC} ${FNBA_SOURCE_DEV_DB}"
+if [ "$MODE" = "refresh" ]; then
+    echo -e "${CYAN}Target:  ${NC} ${TARGET_DB} ${YELLOW}(will be dropped and re-cloned)${NC}"
+    echo -e "${CYAN}Test DB: ${NC} ${TARGET_TEST_DB} ${YELLOW}(.env.test.local healed to match; created if missing)${NC}"
+else
+    echo -e "${CYAN}Dev DB:  ${NC} ${TARGET_DB} ${YELLOW}(will be created)${NC}"
+    echo -e "${CYAN}Test DB: ${NC} ${TARGET_TEST_DB} ${YELLOW}(will be created if missing)${NC}"
+fi
+echo ""
+
+if [ "$MODE" = "refresh" ] && [ "$SKIP_CONFIRM" != true ]; then
+    echo -e "${BLUE}Proceed? [y/N]${NC}"
+    read -r ANSWER
+    if [[ ! "$ANSWER" =~ ^([Yy]|[Yy][Ee][Ss])$ ]]; then
+        echo -e "${YELLOW}Aborted.${NC}"
+        exit 0
+    fi
+fi
+
+if [ "$MODE" = "refresh" ]; then
+    echo -e "${BLUE}Terminating connections to ${TARGET_DB}...${NC}"
+    fnba_terminate_connections "$TARGET_DB"
+    echo -e "${BLUE}Dropping ${TARGET_DB}...${NC}"
+    if ! dropdb "$TARGET_DB"; then
+        echo -e "${RED}Error: dropdb failed. Stop sessions on ${TARGET_DB} and retry.${NC}" >&2
+        exit 1
+    fi
+    fnba_clone_pg_db "$FNBA_SOURCE_DEV_DB" "$TARGET_DB" || exit 1
+    echo -e "${GREEN}✅ ${TARGET_DB} refreshed from ${FNBA_SOURCE_DEV_DB}${NC}"
+else
+    fnba_setup_worktree_dbs "$WORKTREE_PATH" "$CURRENT_BRANCH" || exit 1
+    echo -e "${GREEN}✅ ${TARGET_DB} bootstrapped from ${FNBA_SOURCE_DEV_DB}${NC}"
+fi
+
+fnba_heal_test_env_file "$ENV_TEST_LOCAL" "$TARGET_TEST_DB" || exit 1
+
+if ! grep -qE '^FNBA_TEST_DB_NAME=' "$ENV_LOCAL" 2>/dev/null \
+    && ! grep -qE '^FNBA_TEST_DB_NAME=' "$ENV_FILE" 2>/dev/null; then
+    {
+        echo ""
+        echo "# Per-worktree test database (added by fnba-cli wt-refresh-db)"
+        echo "FNBA_TEST_DB_NAME=${TARGET_TEST_DB}"
+    } >> "$ENV_LOCAL"
+    echo "Back-filled FNBA_TEST_DB_NAME=${TARGET_TEST_DB} into ${ENV_LOCAL}"
+fi
+
+if [ "$RUN_MIGRATE" != true ]; then
+    echo -e "${YELLOW}Skipping migrations (--no-migrate).${NC}"
+elif [ -x "${WORKTREE_PATH}/backend/bin/rails" ] && fnba_bundle_ready "$WORKTREE_PATH"; then
+    echo -e "${BLUE}Running migrations in ${WORKTREE_PATH}/backend...${NC}"
+    if (cd "${WORKTREE_PATH}/backend" && ./bin/rails db:migrate); then
+        echo -e "${GREEN}✅ Migrations applied${NC}"
+    else
+        echo -e "${RED}Migrations failed — DB is cloned but not migrated. Fix and re-run ./bin/rails db:migrate from backend/.${NC}" >&2
+        exit 1
+    fi
+else
+    echo -e "${CYAN}No bundle in this worktree yet; bin/setup will db:prepare later.${NC}"
+fi

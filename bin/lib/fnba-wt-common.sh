@@ -1,6 +1,8 @@
-# Shared helpers for bin/git-wt and bin/git-wt-remove. Sourced, not executed.
+# Shared helpers for bin/git-wt, bin/git-wt-remove, and bin/git-wt-refresh-db.
+# Sourced, not executed.
 # Contract: worktrees live at ../fnba-drafter-worktrees/<slug> next to the
-# primary checkout. This repo has no per-worktree DB, ports, or Caddy.
+# primary checkout. Isolated Postgres DBs live in bin/lib/fnba-wt-db.sh.
+# No per-worktree ports or Caddy.
 
 REPO_NAME="fnba-drafter"
 DEFAULT_BRANCH="main"
