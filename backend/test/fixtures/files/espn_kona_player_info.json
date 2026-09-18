@@ -1,0 +1,158 @@
+{
+  "players": [
+    {
+      "id": 3112335,
+      "player": {
+        "id": 3112335,
+        "firstName": "Nikola",
+        "lastName": "Jokic",
+        "fullName": "Nikola Jokic",
+        "eligibleSlots": [4, 9, 10, 11, 12, 13],
+        "proTeamId": 7,
+        "injuryStatus": "ACTIVE",
+        "draftRanksByRankType": {
+          "ROTO": {
+            "rank": 1,
+            "rankType": "ROTO"
+          }
+        },
+        "stats": [
+          {
+            "id": "002026",
+            "seasonId": 2026,
+            "statSourceId": 0,
+            "statSplitTypeId": 0,
+            "stats": {
+              "0": 1960.0,
+              "3": 720.0,
+              "4": 192.0,
+              "5": 644.0,
+              "6": 836.0,
+              "9": 173.0,
+              "37": 55.0,
+              "38": 34.0,
+              "42": 70.0
+            }
+          },
+          {
+            "id": "102027",
+            "seasonId": 2027,
+            "statSourceId": 1,
+            "statSplitTypeId": 0,
+            "stats": {
+              "0": 2053.0,
+              "1": 62.0,
+              "2": 108.0,
+              "3": 708.0,
+              "6": 978.0,
+              "11": 254.0,
+              "13": 804.0,
+              "14": 1363.0,
+              "15": 365.0,
+              "16": 447.0,
+              "17": 80.0,
+              "18": 223.0,
+              "19": 0.59,
+              "20": 0.817,
+              "21": 0.36,
+              "40": 2702.7,
+              "42": 77.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": 424242,
+      "player": {
+        "id": 424242,
+        "firstName": "Riley",
+        "lastName": "Chen",
+        "fullName": "Riley Chen",
+        "eligibleSlots": [0, 1, 5, 6, 7, 8, 9, 10, 11],
+        "proTeamId": 2,
+        "injuryStatus": "ACTIVE",
+        "draftRanksByRankType": {
+          "ROTO": {
+            "rank": 42,
+            "rankType": "ROTO"
+          }
+        },
+        "stats": [
+          {
+            "id": "102027",
+            "seasonId": 2027,
+            "statSourceId": 1,
+            "statSplitTypeId": 0,
+            "stats": {
+              "0": 1400.0,
+              "1": 30.0,
+              "2": 90.0,
+              "3": 400.0,
+              "4": 50.0,
+              "5": 250.0,
+              "6": 300.0,
+              "9": 140.0,
+              "11": 180.0,
+              "13": 500.0,
+              "14": 1100.0,
+              "15": 250.0,
+              "16": 300.0,
+              "17": 150.0,
+              "18": 400.0,
+              "19": 0.455,
+              "20": 0.833,
+              "21": 0.375,
+              "37": 8.0,
+              "38": 1.0,
+              "40": 2400.0,
+              "42": 80.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": 434343,
+      "player": {
+        "id": 434343,
+        "firstName": "Sam",
+        "lastName": "Ortega",
+        "fullName": "Sam Ortega",
+        "eligibleSlots": [2, 3, 6, 11],
+        "proTeamId": 0,
+        "injuryStatus": null,
+        "draftRanksByRankType": {},
+        "stats": [
+          {
+            "id": "102027",
+            "seasonId": 2027,
+            "statSourceId": 1,
+            "statSplitTypeId": 0,
+            "stats": {
+              "0": 620.0,
+              "1": 40.0,
+              "2": 45.0,
+              "3": 120.0,
+              "4": 70.0,
+              "5": 210.0,
+              "6": 280.0,
+              "9": 110.0,
+              "11": 80.0,
+              "13": 240.0,
+              "14": 520.0,
+              "15": 80.0,
+              "16": 100.0,
+              "17": 60.0,
+              "18": 180.0,
+              "37": 4.0,
+              "38": 0.0,
+              "40": 1500.0,
+              "41": 62.0
+            }
+          }
+        ]
+      }
+    }
+  ]
+}
