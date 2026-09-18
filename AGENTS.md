@@ -23,3 +23,4 @@ Draft a winning team on draft night for a once-a-year 19-category rotisserie fan
 - Keep `CLAUDE.md` as an import of this file so Claude receives the same project rules. Keep shared workflow requirements out of personal memory and vendor-specific instruction copies.
 - Keep product facts in `docs/context/`; keep architecture notes in `docs/architecture/`; keep agent rules in this file. Link instead of copying long docs here.
 - Parallel feature work uses git worktrees via `fnba-cli wt` / `fnba-cli wt-remove` (`bin/fnba-cli`). One git-mutating session per worktree. See [`docs/architecture/worktrees.md`](docs/architecture/worktrees.md).
+- Package installs delay newly published npm versions and Ruby gems by 7 days. Do not weaken [`.npmrc`](.npmrc) or omit Bundler `source "https://rubygems.org", cooldown: 7`. See [`docs/architecture/supply-chain.md`](docs/architecture/supply-chain.md). Run `python3 scripts/check_supply_chain.py` before committing install-config changes.
