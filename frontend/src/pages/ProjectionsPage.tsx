@@ -269,7 +269,15 @@ export default function ProjectionsPage() {
   }
 
   return (
-    <Container component="main" maxWidth="xl" sx={{ py: 4 }}>
+    <Container
+      component="main"
+      maxWidth={false}
+      sx={{
+        py: 4,
+        maxWidth: 1536,
+        '@media (min-width: 1920px)': { maxWidth: 'none' },
+      }}
+    >
       <Stack spacing={2}>
         <Typography variant="h4" component="h1">
           2026–27 projections
