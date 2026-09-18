@@ -1,33 +1,44 @@
 import '@testing-library/jest-dom/vitest'
 import { render, screen } from '@testing-library/react'
+import { ThemeProvider } from '@mui/material/styles'
 import { afterEach, expect, test, vi } from 'vitest'
+import type { ReactElement } from 'react'
+import theme from './theme.ts'
 import App from './App.tsx'
+
+function renderApp(ui: ReactElement) {
+  return render(<ThemeProvider theme={theme}>{ui}</ThemeProvider>)
+}
 
 afterEach(() => {
   vi.unstubAllGlobals()
   vi.restoreAllMocks()
 })
 
-test('renders the app name from /api/status', async () => {
+test('renders the projections page as the home screen', async () => {
   const fetchMock = vi.fn().mockResolvedValue({
     ok: true,
-    json: async () => ({ app: 'fnba-drafter', ok: true }),
+    json: async () => [],
   })
   vi.stubGlobal('fetch', fetchMock)
 
-  render(<App />)
+  renderApp(<App />)
 
-  expect(await screen.findByText('fnba-drafter')).toBeInTheDocument()
-  expect(fetchMock).toHaveBeenCalledWith('/api/status')
+  expect(
+    await screen.findByRole('heading', { name: '2026–27 projections' }),
+  ).toBeInTheDocument()
+  expect(fetchMock).toHaveBeenCalledWith(
+    '/api/projections?source=espn&season=2027',
+  )
 })
 
-test('renders an error when the status request fails', async () => {
+test('renders an error when the projections request fails', async () => {
   vi.stubGlobal(
     'fetch',
-    vi.fn().mockRejectedValue(new Error('Failed to load status')),
+    vi.fn().mockRejectedValue(new Error('Failed to load projections')),
   )
 
-  render(<App />)
+  renderApp(<App />)
 
-  expect(await screen.findByText('Failed to load status')).toBeInTheDocument()
+  expect(await screen.findByText('Failed to load projections')).toBeInTheDocument()
 })
