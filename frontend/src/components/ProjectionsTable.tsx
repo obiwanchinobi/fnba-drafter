@@ -14,6 +14,7 @@ export type SortColumn =
   | 'player'
   | 'pos'
   | 'team'
+  | 'rank'
   | 'gp'
   | 'min'
   | 'fgm'
@@ -49,7 +50,7 @@ const COLUMNS: Column[] = [
   { id: 'pos', label: 'Pos', sortColumn: 'pos', sticky: 'pos' },
   { id: 'team', label: 'Team', sortColumn: 'team', sticky: 'team' },
   { id: 'inj', label: 'Inj' },
-  { id: 'rank', label: 'Rank' },
+  { id: 'rank', label: 'Rank', sortColumn: 'rank', numeric: true },
   { id: 'gp', label: 'GP', sortColumn: 'gp', numeric: true },
   { id: 'min', label: 'MIN', sortColumn: 'min', numeric: true },
   { id: 'fgm', label: 'FGM/FGA', sortColumn: 'fgm', numeric: true },

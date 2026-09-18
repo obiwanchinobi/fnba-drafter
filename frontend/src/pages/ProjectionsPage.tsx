@@ -19,7 +19,12 @@ import ProjectionsToolbar, {
   type PositionFilter,
 } from '../components/ProjectionsToolbar.tsx'
 
-const TEXT_SORT_COLUMNS = new Set<SortColumn>(['player', 'pos', 'team'])
+const ASC_FIRST_SORT_COLUMNS = new Set<SortColumn>([
+  'player',
+  'pos',
+  'team',
+  'rank',
+])
 
 type SortState = {
   column: SortColumn
@@ -81,6 +86,8 @@ function getSortValue(
       return row.positions.join(', ')
     case 'team':
       return row.nba_team
+    case 'rank':
+      return row.espn_roto_rank
     case 'gp':
       return gp
     case 'min':
@@ -263,7 +270,7 @@ export default function ProjectionsPage() {
       }
       return {
         column,
-        direction: TEXT_SORT_COLUMNS.has(column) ? 'asc' : 'desc',
+        direction: ASC_FIRST_SORT_COLUMNS.has(column) ? 'asc' : 'desc',
       }
     })
   }

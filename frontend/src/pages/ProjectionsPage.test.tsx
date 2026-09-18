@@ -308,6 +308,85 @@ test('clicking PTS header reorders rows by points', async () => {
   ])
 })
 
+test('clicking Rank header sorts ESPN rank ascending first with NULL last', async () => {
+  stubProjections([
+    projectionRow({
+      id: 2,
+      full_name: 'Shai Gilgeous-Alexander',
+      positions: ['PG'],
+      nba_team: 'OKC',
+      espn_roto_rank: 2,
+    }),
+    projectionRow({
+      id: 4,
+      full_name: 'Unranked Player',
+      positions: ['SF'],
+      nba_team: 'NYK',
+      espn_roto_rank: null,
+    }),
+    projectionRow({
+      id: 3,
+      full_name: 'Jayson Tatum',
+      positions: ['SF', 'PF'],
+      nba_team: 'BOS',
+      espn_roto_rank: 3,
+    }),
+    projectionRow({
+      id: 1,
+      full_name: 'Nikola Jokic',
+      positions: ['C'],
+      nba_team: 'DEN',
+      espn_roto_rank: 1,
+    }),
+  ])
+
+  renderPage(<ProjectionsPage />)
+
+  expect(await screen.findByText('Nikola Jokic')).toBeInTheDocument()
+
+  const headers = screen
+    .getAllByRole('columnheader')
+    .map((header) => header.textContent)
+  expect(headers.filter((header) => header === 'Rank')).toHaveLength(1)
+  const rankIndex = headers.indexOf('Rank')
+  expect(rankIndex).toBeGreaterThan(-1)
+
+  const rankHeader = screen.getByRole('button', { name: /^Rank$/ })
+
+  fireEvent.click(rankHeader)
+  expect(playerNames()).toEqual([
+    'Nikola Jokic',
+    'Shai Gilgeous-Alexander',
+    'Jayson Tatum',
+    'Unranked Player',
+  ])
+  expect(
+    screen
+      .getByRole('table', { name: 'Player projections' })
+      .querySelectorAll('tbody tr'),
+  ).toHaveLength(4)
+  expect(
+    within(screen.getByRole('table', { name: 'Player projections' }))
+      .getAllByRole('row')
+      .slice(1)
+      .map((row) => within(row).getAllByRole('cell')[rankIndex]?.textContent),
+  ).toEqual(['1', '2', '3', '—'])
+
+  fireEvent.click(rankHeader)
+  expect(playerNames()).toEqual([
+    'Jayson Tatum',
+    'Shai Gilgeous-Alexander',
+    'Nikola Jokic',
+    'Unranked Player',
+  ])
+  expect(
+    within(screen.getByRole('table', { name: 'Player projections' }))
+      .getAllByRole('row')
+      .slice(1)
+      .map((row) => within(row).getAllByRole('cell')[rankIndex]?.textContent),
+  ).toEqual(['3', '2', '1', '—'])
+})
+
 test('NULL OREB sorts last in both directions and does not render as 0.0', async () => {
   stubProjections(THREE_ROWS)
 

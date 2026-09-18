@@ -112,10 +112,13 @@ test('exposes sort labels and reports the clicked column', () => {
     />,
   )
 
-  for (const label of ['Player', 'Team', 'Pos', 'GP', 'MIN', 'PTS']) {
+  for (const label of ['Player', 'Team', 'Pos', 'Rank', 'GP', 'MIN', 'PTS']) {
     expect(screen.getByRole('button', { name: label })).toBeInTheDocument()
   }
 
   fireEvent.click(screen.getByRole('button', { name: /^PTS$/ }))
   expect(onSort).toHaveBeenCalledWith('pts')
+
+  fireEvent.click(screen.getByRole('button', { name: /^Rank$/ }))
+  expect(onSort).toHaveBeenCalledWith('rank')
 })
