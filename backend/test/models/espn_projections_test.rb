@@ -1,6 +1,6 @@
 require "test_helper"
 
-class EspnProjectionsImporterTest < ActiveSupport::TestCase
+class EspnProjectionsTest < ActiveSupport::TestCase
   class FakePageClient
     def initialize(pages)
       @pages = pages
@@ -156,7 +156,7 @@ class EspnProjectionsImporterTest < ActiveSupport::TestCase
     end.new(payload.fetch("players"))
 
     assert_raises(EspnProjectionsClient::InvalidResponseError) do
-      EspnProjectionsImporter.new(client: client).call
+      EspnProjections.fetch(client: client).replace_stored!
     end
 
     assert_equal 1, PlayerProjection.where(source: "espn", season: 2027).count
@@ -169,7 +169,7 @@ class EspnProjectionsImporterTest < ActiveSupport::TestCase
     def call_importer
       payload = JSON.parse(file_fixture("espn_kona_player_info.json").read)
       client = FakePageClient.new([ payload.fetch("players") ])
-      EspnProjectionsImporter.new(client: client).call
+      EspnProjections.fetch(client: client).replace_stored!
     end
 
     def espn_2027_projection(player)

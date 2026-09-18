@@ -50,7 +50,10 @@ export type ProjectionRefresh = {
 }
 
 const REFRESH_ERROR_MESSAGES: Record<string, string> = {
-  espn_credentials_missing: 'ESPN credentials are missing',
+  espn_credentials_missing:
+    'Log in to ESPN in Chrome, then try Update from source again',
+  espn_cookies_unreadable:
+    'Allow Keychain access so FNBA can read your ESPN Chrome session, then try again',
   espn_fetch_failed: 'Failed to fetch projections from source',
   unknown_source: 'Unknown projection source',
 }

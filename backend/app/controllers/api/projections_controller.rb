@@ -23,16 +23,20 @@ module Api
         return
       end
 
-      result = EspnProjectionsImporter.new.call
+      snapshot = EspnProjections.fetch
+      result = snapshot.replace_stored!
       render json: {
         source: result[:source],
         season: result[:season],
         player_count: result[:player_count],
         imported_at: result[:imported_at]
       }
-    rescue EspnProjectionsClient::MissingCredentialsError
+    rescue EspnProjectionsClient::MissingCredentialsError, EspnCookies::Missing
       render json: { error: "espn_credentials_missing" }, status: :service_unavailable
-    rescue EspnProjectionsClient::UnauthorizedError, EspnProjectionsClient::InvalidResponseError, EspnProjectionsClient::Error
+    rescue EspnCookies::Unreadable, ChromeCookieDecryptor::Error
+      render json: { error: "espn_cookies_unreadable" }, status: :service_unavailable
+    rescue EspnProjectionsClient::UnauthorizedError, EspnProjectionsClient::InvalidResponseError, EspnProjectionsClient::Error => error
+      Rails.logger.warn("ESPN refresh failed: #{error.class}: #{error.message}")
       render json: { error: "espn_fetch_failed" }, status: :bad_gateway
     end
 

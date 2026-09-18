@@ -38,6 +38,8 @@ Starts both processes and kills the process group on exit (Ctrl-C):
 
 Open **http://localhost:5173**. Vite proxies `/api` to the Rails API, so the SPA can `fetch('/api/status')` without CORS on the happy path.
 
+**Update from source** reads `SWID` and `espn_s2` from the ESPN session in local Google Chrome (not env vars). Stay logged in to ESPN in Chrome. macOS may ask once to allow Keychain access so those cookies can be decrypted.
+
 Direct API check:
 
 ```sh
@@ -56,6 +58,7 @@ curl -s http://localhost:5173/api/status
 python3 scripts/test_fnba_cli.py
 python3 scripts/check_supply_chain.py
 (cd backend && bin/rails test)
+(cd backend && bin/rubocop)
 (cd frontend && npm test)
 ```
 

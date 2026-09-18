@@ -11,4 +11,3 @@ Rails.application.routes.draw do
     post "projections/refresh", to: "projections#refresh"
   end
 end
-

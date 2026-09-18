@@ -153,7 +153,7 @@ Repeat the `## R<n>:` block for every requirement in index order.
 ## Solution bar
 
 - Smallest change that satisfies the requirement. No speculative frameworks, extra indirection, or future-proofing.
-- Rails: conventional MVC/jobs/migrations; no new abstraction without a second call site.
+- Rails: conventional MVC/jobs/migrations. Domain POROs live in `app/models/` (RuboCop `Fnba/NoServiceObjects`). Do not plan `app/services/`, `app/domain/`, `*Service`, or a `#call` command object. No new abstraction without a second call site.
 - React + TypeScript + MUI: existing design-system components and app patterns; no new UI kit.
 - Bash: POSIX-safe, quoted, no unused flags.
 - Agentic work: name the loop or graph, the halt condition, and which existing skills/tools it uses. If an AI/LLM feature is `actioned`, read [AI feature planning](references/ai-feature-planning.md). This shared reference replaces the former dependency on Grok's bundled `build-with-ai` skill.

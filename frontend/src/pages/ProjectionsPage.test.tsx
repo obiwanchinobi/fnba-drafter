@@ -415,7 +415,7 @@ test('refresh credentials error shows an alert and keeps the current rows', asyn
   fireEvent.click(screen.getByRole('button', { name: /update from source/i }))
 
   expect(await screen.findByRole('alert')).toHaveTextContent(
-    /ESPN credentials are missing/i,
+    /Log in to ESPN in Chrome/i,
   )
   expect(screen.getByText('Nikola Jokic')).toBeInTheDocument()
   expect(screen.getByText('Shai Gilgeous-Alexander')).toBeInTheDocument()

@@ -246,6 +246,7 @@ Discover from the **current worktree**. Do not invent runners.
 | Touched paths | Command |
 |---|---|
 | `.agents/`, `.claude/`, `AGENTS.md`, `CLAUDE.md`, `scripts/check_shared_skills.py` | `python3 scripts/check_shared_skills.py` |
+| `backend/**/*.rb`, `backend/.rubocop.yml`, `backend/lib/rubocop/` | `(cd backend && bin/rubocop)` |
 | `bin/`, `scripts/test_fnba_cli.py` | `python3 scripts/test_fnba_cli.py` |
 | Named test/DoD command in the row | that command, from the worktree |
 | UI files and a browser tool exists | exercise the changed UI; PNG evidence under gitignored `docs/tmp/` is optional extra, not a substitute for interaction |

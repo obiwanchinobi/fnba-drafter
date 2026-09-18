@@ -35,4 +35,5 @@ Draft a winning team on draft night for a once-a-year 19-category rotisserie fan
 - `bin/setup`
 - `bin/dev`
 - `(cd backend && bin/rails test)`
+- `(cd backend && bin/rubocop)`
 - `(cd frontend && npm test)`

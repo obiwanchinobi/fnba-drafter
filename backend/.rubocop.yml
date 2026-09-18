@@ -1,6 +1,12 @@
 # Omakase Ruby styling for Rails
 inherit_gem: { rubocop-rails-omakase: rubocop.yml }
 
+require:
+  - ./lib/rubocop/cop/fnba/no_service_objects
+
+Fnba/NoServiceObjects:
+  Enabled: true
+
 # Overwrite or add rules to create your own house style
 #
 # # Use `[a, [b, c]]` not `[ a, [ b, c ] ]`

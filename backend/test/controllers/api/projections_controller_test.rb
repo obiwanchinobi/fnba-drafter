@@ -153,11 +153,11 @@ module Api
       assert_nil row["ppm"]
     end
 
-    test "POST /api/projections/refresh missing ESPN ENV returns 503 and does not write" do
+    test "POST /api/projections/refresh missing Chrome ESPN cookies returns 503 and does not write" do
       player = create_player(espn_player_id: 1)
       create_projection(player: player, pts: 100)
 
-      with_espn_env(nil, nil) do
+      with_espn_client(EspnProjectionsClient.new(cookies: EspnCookies.new(swid: nil, espn_s2: nil))) do
         post "/api/projections/refresh", params: { source: "espn" }, as: :json
       end
 
@@ -253,24 +253,12 @@ module Api
 
     private
       def with_espn_client(client)
-        importer = EspnProjectionsImporter.new(client: client)
-        EspnProjectionsImporter.define_singleton_method(:new) { |*_args, **_kwargs, &_block| importer }
+        EspnProjectionsClient.define_singleton_method(:new) { |*_args, **_kwargs, &_block| client }
         yield
       ensure
-        if EspnProjectionsImporter.singleton_class.instance_methods(false).include?(:new)
-          EspnProjectionsImporter.singleton_class.remove_method(:new)
+        if EspnProjectionsClient.singleton_class.instance_methods(false).include?(:new)
+          EspnProjectionsClient.singleton_class.remove_method(:new)
         end
-      end
-
-      def with_espn_env(swid, s2)
-        old_swid = ENV["ESPN_SWID"]
-        old_s2 = ENV["ESPN_S2"]
-        swid.nil? ? ENV.delete("ESPN_SWID") : ENV["ESPN_SWID"] = swid
-        s2.nil? ? ENV.delete("ESPN_S2") : ENV["ESPN_S2"] = s2
-        yield
-      ensure
-        old_swid.nil? ? ENV.delete("ESPN_SWID") : ENV["ESPN_SWID"] = old_swid
-        old_s2.nil? ? ENV.delete("ESPN_S2") : ENV["ESPN_S2"] = old_s2
       end
 
       def create_player(**attrs)

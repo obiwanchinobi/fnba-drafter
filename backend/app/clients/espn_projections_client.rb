@@ -12,12 +12,16 @@ class EspnProjectionsClient
   OPEN_TIMEOUT = 10
   READ_TIMEOUT = 10
 
-  def initialize(http: nil)
+  def initialize(http: nil, cookies: nil)
     @http = http
+    @cookies = cookies
   end
 
   def each_page
-    ensure_credentials!
+    session = cookies
+    unless session.present?
+      raise MissingCredentialsError, "ESPN Chrome session cookies are missing"
+    end
 
     offset = 0
     pages = 0
@@ -26,7 +30,7 @@ class EspnProjectionsClient
       loop do
         raise Error, "ESPN pagination exceeded #{MAX_PAGES} pages" if pages >= MAX_PAGES
 
-        players, count = parse_response(http.request(build_request(offset)))
+        players, count = parse_response(http.request(build_request(offset, session)))
         yield players
         pages += 1
         offset += Espn::PAGE_SIZE
@@ -38,22 +42,12 @@ class EspnProjectionsClient
   end
 
   private
-    def ensure_credentials!
-      if swid.blank? || s2.blank?
-        raise MissingCredentialsError, "ESPN_SWID and ESPN_S2 must be set"
-      end
+    def cookies
+      @cookies ||= EspnCookies.from_chrome
     end
 
-    def swid
-      ENV["ESPN_SWID"]
-    end
-
-    def s2
-      ENV["ESPN_S2"]
-    end
-
-    def cookie_header
-      "SWID=#{swid}; espn_s2=#{s2}"
+    def cookie_header(session)
+      session.header
     end
 
     def page_uri
@@ -62,11 +56,11 @@ class EspnProjectionsClient
       )
     end
 
-    def build_request(offset)
+    def build_request(offset, session)
       request = Net::HTTP::Get.new(page_uri)
       request["x-fantasy-source"] = "kona"
       request["x-fantasy-platform"] = "espn-fantasy-web"
-      request["Cookie"] = cookie_header
+      request["Cookie"] = cookie_header(session)
       request["x-fantasy-filter"] = JSON.generate(filter_payload(offset))
       request["Accept"] = "application/json"
       request
@@ -110,7 +104,9 @@ class EspnProjectionsClient
     def parse_response(response)
       code = response.code.to_s
       raise UnauthorizedError, "ESPN authentication failed" if code == "401"
-      raise InvalidResponseError, "ESPN request failed with HTTP #{code}" unless code == "200"
+      unless code == "200"
+        raise InvalidResponseError, espn_failure_message(code, response.body)
+      end
 
       json = parse_json(response.body)
       players = json["players"]
@@ -122,6 +118,15 @@ class EspnProjectionsClient
       count = count_header.present? ? count_header.to_i : nil
 
       [ players, count ]
+    end
+
+    def espn_failure_message(code, body)
+      json = JSON.parse(body.to_s)
+      messages = Array(json["messages"]).map(&:to_s).reject(&:blank?)
+      detail = messages.any? ? messages.join("; ") : "HTTP #{code}"
+      "ESPN request failed with HTTP #{code}: #{detail}"
+    rescue JSON::ParserError
+      "ESPN request failed with HTTP #{code}"
     end
 
     def parse_json(body)

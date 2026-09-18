@@ -23,24 +23,23 @@ class EspnProjectionsClientTest < ActiveSupport::TestCase
     end
   end
 
-  test "missing ESPN_SWID or ESPN_S2 raises MissingCredentialsError" do
-    error = with_env("ESPN_SWID" => nil, "ESPN_S2" => nil) do
-      assert_raises(EspnProjectionsClient::MissingCredentialsError) do
-        EspnProjectionsClient.new.each_page { }
-      end
+  test "missing Chrome ESPN cookies raises MissingCredentialsError" do
+    error = assert_raises(EspnProjectionsClient::MissingCredentialsError) do
+      EspnProjectionsClient.new(cookies: EspnCookies.new(swid: nil, espn_s2: nil)).each_page { }
     end
 
     refute_match(/SWID=/i, error.message)
     refute_match(/espn_s2=/i, error.message)
   end
 
-  test "blank credentials raise MissingCredentialsError without performing HTTP" do
+  test "blank cookies raise MissingCredentialsError without performing HTTP" do
     http = FakeHttp.new(FakeResponse.new(code: "200", body: { "players" => [] }.to_json, headers: {}))
 
-    with_env("ESPN_SWID" => "", "ESPN_S2" => "   ") do
-      assert_raises(EspnProjectionsClient::MissingCredentialsError) do
-        EspnProjectionsClient.new(http: http).each_page { }
-      end
+    assert_raises(EspnProjectionsClient::MissingCredentialsError) do
+      EspnProjectionsClient.new(
+        http: http,
+        cookies: EspnCookies.new(swid: "", espn_s2: "   ")
+      ).each_page { }
     end
 
     assert_empty http.requests
@@ -49,20 +48,35 @@ class EspnProjectionsClientTest < ActiveSupport::TestCase
   test "HTTP 401 raises UnauthorizedError" do
     http = FakeHttp.new(FakeResponse.new(code: "401", body: "unauthorized", headers: {}))
 
-    with_env("ESPN_SWID" => "{dummy-swid}", "ESPN_S2" => "dummy-s2") do
-      assert_raises(EspnProjectionsClient::UnauthorizedError) do
-        EspnProjectionsClient.new(http: http).each_page { }
-      end
+    assert_raises(EspnProjectionsClient::UnauthorizedError) do
+      client_with(http).each_page { }
     end
+  end
+
+  test "HTTP 400 JSON includes ESPN filter messages without cookie values" do
+    http = FakeHttp.new(
+      FakeResponse.new(
+        code: "400",
+        body: { "messages" => [ "Filter: Limit request must be accompanied by a sort" ] }.to_json,
+        headers: {}
+      )
+    )
+
+    error = assert_raises(EspnProjectionsClient::InvalidResponseError) do
+      client_with(http).each_page { }
+    end
+
+    assert_match(/HTTP 400/, error.message)
+    assert_match(/accompanied by a sort/, error.message)
+    refute_match(/SWID=/i, error.message)
+    refute_match(/espn_s2=/i, error.message)
   end
 
   test "non-JSON body raises InvalidResponseError" do
     http = FakeHttp.new(FakeResponse.new(code: "200", body: "<html>nope</html>", headers: {}))
 
-    with_env("ESPN_SWID" => "{dummy-swid}", "ESPN_S2" => "dummy-s2") do
-      assert_raises(EspnProjectionsClient::InvalidResponseError) do
-        EspnProjectionsClient.new(http: http).each_page { }
-      end
+    assert_raises(EspnProjectionsClient::InvalidResponseError) do
+      client_with(http).each_page { }
     end
   end
 
@@ -75,9 +89,7 @@ class EspnProjectionsClientTest < ActiveSupport::TestCase
     )
 
     pages = []
-    with_env("ESPN_SWID" => "{dummy-swid}", "ESPN_S2" => "dummy-s2") do
-      EspnProjectionsClient.new(http: http).each_page { |players| pages << players }
-    end
+    client_with(http).each_page { |players| pages << players }
 
     assert_equal 2, pages.size
     assert_equal 50, pages.first.size
@@ -119,9 +131,7 @@ class EspnProjectionsClientTest < ActiveSupport::TestCase
     )
 
     pages = []
-    with_env("ESPN_SWID" => "{dummy-swid}", "ESPN_S2" => "dummy-s2") do
-      EspnProjectionsClient.new(http: http).each_page { |players| pages << players }
-    end
+    client_with(http).each_page { |players| pages << players }
 
     assert_equal 1, pages.size
     assert_equal 1, http.requests.size
@@ -143,10 +153,8 @@ class EspnProjectionsClientTest < ActiveSupport::TestCase
     end.new
 
     yielded = 0
-    with_env("ESPN_SWID" => "{dummy-swid}", "ESPN_S2" => "dummy-s2") do
-      assert_raises(EspnProjectionsClient::Error) do
-        EspnProjectionsClient.new(http: http).each_page { yielded += 1 }
-      end
+    assert_raises(EspnProjectionsClient::Error) do
+      client_with(http).each_page { yielded += 1 }
     end
 
     assert_equal 30, http.request_count
@@ -154,25 +162,10 @@ class EspnProjectionsClientTest < ActiveSupport::TestCase
   end
 
   private
-    def with_env(vars)
-      prior = {}
-      vars.each do |key, value|
-        name = key.to_s
-        prior[name] = ENV[name]
-        if value.nil?
-          ENV.delete(name)
-        else
-          ENV[name] = value
-        end
-      end
-      yield
-    ensure
-      prior.each do |name, value|
-        if value.nil?
-          ENV.delete(name)
-        else
-          ENV[name] = value
-        end
-      end
+    def client_with(http)
+      EspnProjectionsClient.new(
+        http: http,
+        cookies: EspnCookies.new(swid: "{dummy-swid}", espn_s2: "dummy-s2")
+      )
     end
 end

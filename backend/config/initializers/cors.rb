@@ -8,7 +8,7 @@ Rails.application.config.middleware.insert_before 0, Rack::Cors do
 
     resource "/api/*",
       headers: :any,
-      methods: [:get, :head, :options],
+      methods: [ :get, :head, :options ],
       credentials: false
   end
 end
