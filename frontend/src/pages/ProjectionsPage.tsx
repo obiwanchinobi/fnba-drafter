@@ -1,14 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Alert from '@mui/material/Alert'
 import Container from '@mui/material/Container'
-import Paper from '@mui/material/Paper'
 import Stack from '@mui/material/Stack'
-import Table from '@mui/material/Table'
-import TableBody from '@mui/material/TableBody'
-import TableCell from '@mui/material/TableCell'
-import TableContainer from '@mui/material/TableContainer'
-import TableHead from '@mui/material/TableHead'
-import TableRow from '@mui/material/TableRow'
 import Typography from '@mui/material/Typography'
 import {
   DEFAULT_PROJECTION_SEASON,
@@ -16,36 +9,20 @@ import {
   fetchProjections,
   type Projection,
 } from '../api/projections.ts'
-import ProjectionsToolbar from '../components/ProjectionsToolbar.tsx'
+import ProjectionsTable, {
+  type SortColumn,
+  type SortDirection,
+} from '../components/ProjectionsTable.tsx'
+import ProjectionsToolbar, {
+  type PositionFilter,
+} from '../components/ProjectionsToolbar.tsx'
 
-const TABLE_HEADERS = [
-  'Player',
-  'Pos',
-  'Team',
-  'Inj',
-  'Rank',
-  'GP',
-  'MIN',
-  'FGM/FGA',
-  'FG%',
-  'FTM/FTA',
-  'FT%',
-  '3PM/3PA',
-  '3P%',
-  'OREB',
-  'DREB',
-  'AST',
-  'A/TO',
-  'STL',
-  'STR',
-  'BLK',
-  'TO',
-  'PF',
-  'DD',
-  'TD',
-  'PTS',
-  'PPM',
-] as const
+const TEXT_SORT_COLUMNS = new Set<SortColumn>(['player', 'pos', 'team'])
+
+type SortState = {
+  column: SortColumn
+  direction: SortDirection
+}
 
 function toNumber(value: number | string | null | undefined): number | null {
   if (value == null || value === '') return null
@@ -63,20 +40,109 @@ function perGame(
   return value / games
 }
 
-function formatStat(value: number | null, digits = 1): string {
-  if (value == null) return '—'
-  return value.toFixed(digits)
+function playerMatchesSearch(fullName: string, search: string): boolean {
+  const needle = search.trim().toLowerCase()
+  if (!needle) return true
+  return fullName.toLowerCase().includes(needle)
 }
 
-function formatMadeAttempted(
-  made: number | null,
-  attempted: number | null,
-  gp: number | null,
-): string {
-  const madePg = perGame(made, gp)
-  const attemptedPg = perGame(attempted, gp)
-  if (madePg == null && attemptedPg == null) return '—'
-  return `${formatStat(madePg)}/${formatStat(attemptedPg)}`
+function playerMatchesPosition(
+  positions: string[],
+  position: PositionFilter,
+): boolean {
+  if (position === 'All') return true
+  if (position === 'G') return positions.includes('PG') || positions.includes('SG')
+  if (position === 'F/C') {
+    return (
+      positions.includes('SF') ||
+      positions.includes('PF') ||
+      positions.includes('C')
+    )
+  }
+  return positions.includes(position)
+}
+
+function playerMatchesTeams(nbaTeam: string, teams: string[]): boolean {
+  if (teams.length === 0) return true
+  return teams.includes(nbaTeam)
+}
+
+function getSortValue(
+  row: Projection,
+  column: SortColumn,
+): number | string | null {
+  const gp = toNumber(row.gp)
+  switch (column) {
+    case 'player':
+      return row.full_name
+    case 'pos':
+      return row.positions.join(', ')
+    case 'team':
+      return row.nba_team
+    case 'gp':
+      return gp
+    case 'min':
+      return perGame(row.min, gp)
+    case 'fgm':
+      return perGame(row.fgm, gp)
+    case 'fg_pct':
+      return toNumber(row.fg_pct)
+    case 'ftm':
+      return perGame(row.ftm, gp)
+    case 'ft_pct':
+      return toNumber(row.ft_pct)
+    case 'tpm':
+      return perGame(row.tpm, gp)
+    case 'tp_pct':
+      return toNumber(row.tp_pct)
+    case 'oreb':
+      return perGame(row.oreb, gp)
+    case 'dreb':
+      return perGame(row.dreb, gp)
+    case 'ast':
+      return perGame(row.ast, gp)
+    case 'ato':
+      return toNumber(row.ato)
+    case 'stl':
+      return perGame(row.stl, gp)
+    case 'str':
+      return toNumber(row.str)
+    case 'blk':
+      return perGame(row.blk, gp)
+    case 'to':
+      return perGame(row.to, gp)
+    case 'pf':
+      return perGame(row.pf, gp)
+    case 'dd':
+      return perGame(row.dd, gp)
+    case 'td':
+      return perGame(row.td, gp)
+    case 'pts':
+      return perGame(row.pts, gp)
+    case 'ppm':
+      return toNumber(row.ppm)
+  }
+}
+
+function compareSortValues(
+  a: number | string | null,
+  b: number | string | null,
+  direction: SortDirection,
+): number {
+  const aMissing = a == null || a === ''
+  const bMissing = b == null || b === ''
+  // Missing (NULL) sorts last in both directions so zeros and gaps stay distinct.
+  if (aMissing && bMissing) return 0
+  if (aMissing) return 1
+  if (bMissing) return -1
+  if (typeof a === 'string' || typeof b === 'string') {
+    const cmp = String(a).localeCompare(String(b), undefined, {
+      sensitivity: 'base',
+    })
+    return direction === 'asc' ? cmp : -cmp
+  }
+  const cmp = a - b
+  return direction === 'asc' ? cmp : -cmp
 }
 
 function latestImportedAt(rows: Projection[]): string | null {
@@ -92,6 +158,10 @@ export default function ProjectionsPage() {
   const [rows, setRows] = useState<Projection[]>([])
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [search, setSearch] = useState('')
+  const [position, setPosition] = useState<PositionFilter>('All')
+  const [teams, setTeams] = useState<string[]>([])
+  const [sort, setSort] = useState<SortState | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -124,7 +194,48 @@ export default function ProjectionsPage() {
     }
   }, [source])
 
+  const extraTeams = useMemo(() => {
+    const unique = new Set<string>()
+    for (const row of rows) {
+      if (row.nba_team) unique.add(row.nba_team)
+    }
+    return [...unique]
+  }, [rows])
+
+  const visibleRows = useMemo(() => {
+    const filtered = rows.filter(
+      (row) =>
+        playerMatchesSearch(row.full_name, search) &&
+        playerMatchesPosition(row.positions, position) &&
+        playerMatchesTeams(row.nba_team, teams),
+    )
+    if (!sort) return filtered
+    return [...filtered].sort((a, b) => {
+      const cmp = compareSortValues(
+        getSortValue(a, sort.column),
+        getSortValue(b, sort.column),
+        sort.direction,
+      )
+      return cmp !== 0 ? cmp : a.id - b.id
+    })
+  }, [rows, search, position, teams, sort])
+
   const lastImported = latestImportedAt(rows)
+
+  function handleSort(column: SortColumn) {
+    setSort((current) => {
+      if (current?.column === column) {
+        return {
+          column,
+          direction: current.direction === 'asc' ? 'desc' : 'asc',
+        }
+      }
+      return {
+        column,
+        direction: TEXT_SORT_COLUMNS.has(column) ? 'asc' : 'desc',
+      }
+    })
+  }
 
   return (
     <Container component="main" maxWidth="xl" sx={{ py: 4 }}>
@@ -132,7 +243,17 @@ export default function ProjectionsPage() {
         <Typography variant="h4" component="h1">
           2026–27 projections
         </Typography>
-        <ProjectionsToolbar source={source} onSourceChange={setSource} />
+        <ProjectionsToolbar
+          source={source}
+          onSourceChange={setSource}
+          search={search}
+          onSearchChange={setSearch}
+          position={position}
+          onPositionChange={setPosition}
+          teams={teams}
+          onTeamsChange={setTeams}
+          extraTeams={extraTeams}
+        />
         {error ? <Alert severity="error">{error}</Alert> : null}
         {lastImported && !error ? (
           <Typography>
@@ -142,96 +263,17 @@ export default function ProjectionsPage() {
         {error ? null : loading ? (
           <Typography>Loading projections…</Typography>
         ) : (
-          <TableContainer component={Paper} variant="outlined">
-            <Table size="small" aria-label="Player projections">
-              <TableHead>
-                <TableRow>
-                  {TABLE_HEADERS.map((header) => (
-                    <TableCell key={header}>{header}</TableCell>
-                  ))}
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {rows.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={TABLE_HEADERS.length}>
-                      No projections yet. Use Update from source.
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  rows.map((row) => {
-                    const gp = toNumber(row.gp)
-                    return (
-                      <TableRow key={row.id}>
-                        <TableCell>{row.full_name}</TableCell>
-                        <TableCell>{row.positions.join(', ')}</TableCell>
-                        <TableCell>{row.nba_team}</TableCell>
-                        <TableCell>{row.injury_status ?? '—'}</TableCell>
-                        <TableCell>
-                          {row.espn_roto_rank == null
-                            ? '—'
-                            : String(row.espn_roto_rank)}
-                        </TableCell>
-                        <TableCell>{formatStat(gp, 0)}</TableCell>
-                        <TableCell>{formatStat(perGame(row.min, gp))}</TableCell>
-                        <TableCell>
-                          {formatMadeAttempted(row.fgm, row.fga, gp)}
-                        </TableCell>
-                        <TableCell>
-                          {formatStat(toNumber(row.fg_pct), 3)}
-                        </TableCell>
-                        <TableCell>
-                          {formatMadeAttempted(row.ftm, row.fta, gp)}
-                        </TableCell>
-                        <TableCell>
-                          {formatStat(toNumber(row.ft_pct), 3)}
-                        </TableCell>
-                        <TableCell>
-                          {formatMadeAttempted(row.tpm, row.tpa, gp)}
-                        </TableCell>
-                        <TableCell>
-                          {formatStat(toNumber(row.tp_pct), 3)}
-                        </TableCell>
-                        <TableCell>
-                          {formatStat(perGame(row.oreb, gp))}
-                        </TableCell>
-                        <TableCell>
-                          {formatStat(perGame(row.dreb, gp))}
-                        </TableCell>
-                        <TableCell>
-                          {formatStat(perGame(row.ast, gp))}
-                        </TableCell>
-                        <TableCell>
-                          {formatStat(toNumber(row.ato), 2)}
-                        </TableCell>
-                        <TableCell>
-                          {formatStat(perGame(row.stl, gp))}
-                        </TableCell>
-                        <TableCell>
-                          {formatStat(toNumber(row.str), 2)}
-                        </TableCell>
-                        <TableCell>
-                          {formatStat(perGame(row.blk, gp))}
-                        </TableCell>
-                        <TableCell>
-                          {formatStat(perGame(row.to, gp))}
-                        </TableCell>
-                        <TableCell>{formatStat(perGame(row.pf, gp))}</TableCell>
-                        <TableCell>{formatStat(perGame(row.dd, gp))}</TableCell>
-                        <TableCell>{formatStat(perGame(row.td, gp))}</TableCell>
-                        <TableCell>
-                          {formatStat(perGame(row.pts, gp))}
-                        </TableCell>
-                        <TableCell>
-                          {formatStat(toNumber(row.ppm), 3)}
-                        </TableCell>
-                      </TableRow>
-                    )
-                  })
-                )}
-              </TableBody>
-            </Table>
-          </TableContainer>
+          <ProjectionsTable
+            rows={visibleRows}
+            sortBy={sort?.column ?? null}
+            sortDirection={sort?.direction ?? 'desc'}
+            onSort={handleSort}
+            emptyMessage={
+              rows.length === 0
+                ? 'No projections yet. Use Update from source.'
+                : 'No matching players.'
+            }
+          />
         )}
       </Stack>
     </Container>
