@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+# Install gems, npm packages, and prepare local PostgreSQL databases.
+# Does not start the development servers; use bin/dev for that.
+
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+PATH="/opt/homebrew/opt/postgresql@16/bin:/opt/homebrew/bin:/usr/local/opt/postgresql@16/bin:/usr/local/bin:${PATH}"
+export PATH
+
+postgres_ready() {
+  if command -v pg_isready >/dev/null 2>&1; then
+    pg_isready -h 127.0.0.1 -p 5432 >/dev/null 2>&1
+    return $?
+  fi
+  bash -c 'echo >/dev/tcp/127.0.0.1/5432' >/dev/null 2>&1
+}
+
+if ! postgres_ready; then
+  echo "error: PostgreSQL is not accepting connections on 127.0.0.1:5432." >&2
+  echo "Start Homebrew PostgreSQL (e.g. brew services start postgresql@16) and re-run bin/setup." >&2
+  exit 1
+fi
+
+echo "== Installing backend gems =="
+(
+  cd "${ROOT}/backend"
+  if ! bundle _4.0.20_ version >/dev/null 2>&1; then
+    echo "error: Bundler 4.0.20 is required (Gemfile.lock is BUNDLED WITH 4.0.20)." >&2
+    echo "Install it with: gem install bundler -v 4.0.20" >&2
+    exit 1
+  fi
+  bundle _4.0.20_ install
+)
+
+echo "== Installing frontend packages =="
+(
+  cd "${ROOT}/frontend"
+  npm install
+)
+
+echo "== Preparing database =="
+(
+  cd "${ROOT}/backend"
+  ./bin/rails db:prepare
+)
+
+echo "Setup complete. Run bin/dev to start the API and SPA."

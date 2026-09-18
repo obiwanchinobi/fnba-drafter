@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+# Start the Rails API and Vite SPA together. Ctrl-C (or any exit) kills the process group.
+
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+
+cleanup() {
+  trap - EXIT INT TERM
+  # Negative PID = this script's process group (Rails + Vite + their children).
+  kill -- -$$ 2>/dev/null || true
+}
+
+trap cleanup EXIT INT TERM
+
+echo "API  http://127.0.0.1:3000"
+echo "SPA  http://localhost:5173  (open this URL)"
+
+(
+  cd "${ROOT}/backend"
+  exec ./bin/rails server -b 127.0.0.1 -p 3000
+) &
+
+(
+  cd "${ROOT}/frontend"
+  exec npm run dev
+) &
+
+wait
