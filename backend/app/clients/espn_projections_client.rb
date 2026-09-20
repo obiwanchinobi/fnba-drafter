@@ -12,9 +12,10 @@ class EspnProjectionsClient
   OPEN_TIMEOUT = 10
   READ_TIMEOUT = 10
 
-  def initialize(http: nil, cookies: nil)
+  def initialize(http: nil, cookies: nil, season: Espn::SEASON)
     @http = http
     @cookies = cookies
+    @season = season
   end
 
   def each_page
@@ -52,7 +53,7 @@ class EspnProjectionsClient
 
     def page_uri
       URI.parse(
-        "https://lm-api-reads.fantasy.espn.com/apis/v3/games/fba/seasons/#{Espn::SEASON}/segments/0/leagues/#{Espn::LEAGUE_ID}?view=kona_player_info"
+        "https://lm-api-reads.fantasy.espn.com/apis/v3/games/fba/seasons/#{@season}/segments/0/leagues/#{Espn::LEAGUE_ID}?view=kona_player_info"
       )
     end
 
@@ -69,18 +70,26 @@ class EspnProjectionsClient
     def filter_payload(offset)
       {
         "players" => {
-          "filterStatsForExternalIds" => { "value" => [ Espn::SEASON - 1, Espn::SEASON ] },
+          "filterStatsForExternalIds" => { "value" => [ @season - 1, @season ] },
           "filterSlotIds" => { "value" => (0..11).to_a },
           "filterStatsForSourceIds" => { "value" => [ 0, 1 ] },
           "useFullProjectionTable" => { "value" => true },
-          "sortAppliedStatTotal" => { "sortAsc" => false, "sortPriority" => 3, "value" => Espn::STAT_BLOCK_ID },
+          "sortAppliedStatTotal" => { "sortAsc" => false, "sortPriority" => 3, "value" => Espn.projection_block_id(@season) },
           "sortDraftRanks" => { "sortPriority" => 2, "sortAsc" => true, "value" => "ROTO" },
           "sortPercOwned" => { "sortPriority" => 4, "sortAsc" => false },
           "limit" => Espn::PAGE_SIZE,
           "offset" => offset,
           "filterStatsForTopScoringPeriodIds" => {
             "value" => 5,
-            "additionalValue" => %w[002027 102027 002026 012027 022027 032027 042027]
+            "additionalValue" => [
+              Espn.actuals_block_id(@season),
+              Espn.projection_block_id(@season),
+              Espn.actuals_block_id(@season - 1),
+              "01#{@season}",
+              "02#{@season}",
+              "03#{@season}",
+              "04#{@season}"
+            ]
           }
         }
       }

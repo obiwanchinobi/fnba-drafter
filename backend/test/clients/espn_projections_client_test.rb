@@ -123,6 +123,27 @@ class EspnProjectionsClientTest < ActiveSupport::TestCase
       filters[0].dig("players", "filterStatsForTopScoringPeriodIds", "additionalValue")
   end
 
+  test "season: 2026 requests the 2026 URI and a filter containing 002026 and 102026" do
+    http = FakeHttp.new(FakeResponse.new(code: "200", body: { "players" => [] }.to_json, headers: {}))
+
+    EspnProjectionsClient.new(
+      http: http,
+      cookies: EspnCookies.new(swid: "{dummy-swid}", espn_s2: "dummy-s2"),
+      season: 2026
+    ).each_page { }
+
+    request = http.requests.first
+    assert_includes request.path, "/apis/v3/games/fba/seasons/2026/segments/0/leagues/43046"
+
+    filter = JSON.parse(request["x-fantasy-filter"])
+    additional = filter.dig("players", "filterStatsForTopScoringPeriodIds", "additionalValue")
+    assert_includes additional, "002026"
+    assert_includes additional, "102026"
+    assert_equal [ 2025, 2026 ], filter.dig("players", "filterStatsForExternalIds", "value")
+    assert_equal "102026", filter.dig("players", "sortAppliedStatTotal", "value")
+    assert_equal %w[002026 102026 002025 012026 022026 032026 042026], additional
+  end
+
   test "stops when offset reaches the filter player count" do
     page50 = { "players" => Array.new(50) { |i| { "id" => i } } }.to_json
     http = FakeHttp.new(
