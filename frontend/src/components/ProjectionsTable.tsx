@@ -7,7 +7,11 @@ import TableHead from '@mui/material/TableHead'
 import TableRow from '@mui/material/TableRow'
 import TableSortLabel from '@mui/material/TableSortLabel'
 import Typography from '@mui/material/Typography'
-import type { Projection } from '../api/projections.ts'
+import {
+  DEFAULT_PROJECTION_SEASON,
+  type Dataset,
+  type Projection,
+} from '../api/projections.ts'
 
 export type SortDirection = 'asc' | 'desc'
 
@@ -208,7 +212,23 @@ function estimatedDeltaCaption(row: Projection, columnId: string) {
   )
 }
 
-function formatCell(row: Projection, columnId: string): string {
+function tableAriaLabel(dataset: Dataset, rows: Projection[]): string {
+  const season =
+    rows[0]?.season ??
+    (dataset === 'actual'
+      ? DEFAULT_PROJECTION_SEASON - 1
+      : DEFAULT_PROJECTION_SEASON)
+  const range = priorSeasonLabel(season)
+  return dataset === 'actual'
+    ? `Player actuals ${range}`
+    : `Player projections ${range}`
+}
+
+function formatCell(
+  row: Projection,
+  columnId: string,
+  dataset: Dataset,
+): string {
   const gp = toNumber(row.gp)
   switch (columnId) {
     case 'player':
@@ -220,7 +240,8 @@ function formatCell(row: Projection, columnId: string): string {
     case 'inj':
       return row.injury_status ?? '—'
     case 'rank':
-      return row.espn_roto_rank == null ? '—' : String(row.espn_roto_rank)
+      if (dataset === 'actual' || row.espn_roto_rank == null) return '—'
+      return String(row.espn_roto_rank)
     case 'gp':
       return formatStat(gp, 0)
     case 'min':
@@ -274,6 +295,7 @@ type ProjectionsTableProps = {
   sortDirection: SortDirection
   onSort: (column: SortColumn) => void
   emptyMessage: string
+  dataset?: Dataset
 }
 
 export default function ProjectionsTable({
@@ -282,10 +304,11 @@ export default function ProjectionsTable({
   sortDirection,
   onSort,
   emptyMessage,
+  dataset = 'projection',
 }: ProjectionsTableProps) {
   return (
     <TableContainer component={Paper} variant="outlined">
-      <Table size="small" aria-label="Player projections">
+      <Table size="small" aria-label={tableAriaLabel(dataset, rows)}>
         <TableHead>
           <TableRow>
             {COLUMNS.map((column) => {
@@ -323,9 +346,9 @@ export default function ProjectionsTable({
             rows.map((row) => (
               <TableRow key={row.id}>
                 {COLUMNS.map((column) => {
-                  const estimated = (row.estimated_stat_keys ?? []).includes(
-                    column.id,
-                  )
+                  const estimated =
+                    dataset === 'projection' &&
+                    (row.estimated_stat_keys ?? []).includes(column.id)
                   return (
                     <TableCell
                       key={column.id}
@@ -339,8 +362,10 @@ export default function ProjectionsTable({
                           : undefined
                       }
                     >
-                      {formatCell(row, column.id)}
-                      {estimatedDeltaCaption(row, column.id)}
+                      {formatCell(row, column.id, dataset)}
+                      {dataset === 'projection'
+                        ? estimatedDeltaCaption(row, column.id)
+                        : null}
                     </TableCell>
                   )
                 })}

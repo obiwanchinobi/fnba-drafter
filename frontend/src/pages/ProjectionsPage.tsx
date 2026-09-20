@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import Alert from '@mui/material/Alert'
+import Chip from '@mui/material/Chip'
 import Container from '@mui/material/Container'
 import Stack from '@mui/material/Stack'
 import Typography from '@mui/material/Typography'
@@ -7,7 +8,9 @@ import {
   DEFAULT_PROJECTION_SEASON,
   DEFAULT_PROJECTION_SOURCE,
   fetchProjections,
+  fetchSeasonStats,
   refreshProjections,
+  type Dataset,
   type Projection,
   type ProjectionRefresh,
 } from '../api/projections.ts'
@@ -162,8 +165,22 @@ function latestImportedAt(rows: Projection[]): string | null {
   }, null)
 }
 
+function loadDataset(
+  dataset: Dataset,
+  source: string,
+): Promise<Projection[]> {
+  if (dataset === 'actual') {
+    return fetchSeasonStats({
+      source,
+      season: DEFAULT_PROJECTION_SEASON - 1,
+    })
+  }
+  return fetchProjections({ source, season: DEFAULT_PROJECTION_SEASON })
+}
+
 export default function ProjectionsPage() {
   const [source, setSource] = useState(DEFAULT_PROJECTION_SOURCE)
+  const [dataset, setDataset] = useState<Dataset>('projection')
   const [rows, setRows] = useState<Projection[]>([])
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -183,7 +200,7 @@ export default function ProjectionsPage() {
     setError(null)
     setRefreshResult(null)
 
-    fetchProjections({ source, season: DEFAULT_PROJECTION_SEASON })
+    loadDataset(dataset, source)
       .then((data) => {
         if (!cancelled) {
           setRows(data)
@@ -206,7 +223,7 @@ export default function ProjectionsPage() {
     return () => {
       cancelled = true
     }
-  }, [source])
+  }, [source, dataset])
 
   const extraTeams = useMemo(() => {
     const unique = new Set<string>()
@@ -235,9 +252,9 @@ export default function ProjectionsPage() {
   }, [rows, search, position, teams, sort])
 
   const lastImported = latestImportedAt(rows)
-  const hasEstimates = rows.some(
-    (row) => (row.estimated_stat_keys ?? []).length > 0,
-  )
+  const hasEstimates =
+    dataset === 'projection' &&
+    rows.some((row) => (row.estimated_stat_keys ?? []).length > 0)
 
   async function handleUpdateFromSource() {
     setUpdating(true)
@@ -248,10 +265,7 @@ export default function ProjectionsPage() {
         season: DEFAULT_PROJECTION_SEASON,
       })
       setRefreshResult(result)
-      const data = await fetchProjections({
-        source,
-        season: DEFAULT_PROJECTION_SEASON,
-      })
+      const data = await loadDataset(dataset, source)
       setRows(data)
     } catch (err: unknown) {
       setRefreshResult(null)
@@ -260,6 +274,13 @@ export default function ProjectionsPage() {
       )
     } finally {
       setUpdating(false)
+    }
+  }
+
+  function handleDatasetChange(next: Dataset) {
+    setDataset(next)
+    if (next === 'actual') {
+      setSort({ column: 'pts', direction: 'desc' })
     }
   }
 
@@ -289,12 +310,22 @@ export default function ProjectionsPage() {
       }}
     >
       <Stack spacing={2}>
-        <Typography variant="h4" component="h1">
-          2026–27 projections
-        </Typography>
+        <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center' }}>
+          <Typography variant="h4" component="h1">
+            2026–27 projections
+          </Typography>
+          <Chip
+            data-testid="dataset-chip"
+            label={dataset === 'projection' ? 'Projection' : 'Actual'}
+            color={dataset === 'projection' ? 'primary' : 'default'}
+            size="small"
+          />
+        </Stack>
         <ProjectionsToolbar
           source={source}
           onSourceChange={setSource}
+          dataset={dataset}
+          onDatasetChange={handleDatasetChange}
           search={search}
           onSearchChange={setSearch}
           position={position}
@@ -321,13 +352,16 @@ export default function ProjectionsPage() {
         ) : (
           <>
             <ProjectionsTable
+              dataset={dataset}
               rows={visibleRows}
               sortBy={sort?.column ?? null}
               sortDirection={sort?.direction ?? 'desc'}
               onSort={handleSort}
               emptyMessage={
                 rows.length === 0
-                  ? 'No projections yet. Use Update from source.'
+                  ? dataset === 'actual'
+                    ? 'No actuals yet. Use Update from source.'
+                    : 'No projections yet. Use Update from source.'
                   : 'No matching players.'
               }
             />

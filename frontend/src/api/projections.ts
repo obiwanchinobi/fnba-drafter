@@ -1,6 +1,23 @@
 export const DEFAULT_PROJECTION_SOURCE = 'espn'
 export const DEFAULT_PROJECTION_SEASON = 2027
 
+export type Dataset = 'projection' | 'actual'
+
+function seasonRangeLabel(season: number): string {
+  return `${season - 1}-${String(season).slice(-2)}`
+}
+
+export const DATASET_OPTIONS: { value: Dataset; label: string }[] = [
+  {
+    value: 'projection',
+    label: `${seasonRangeLabel(DEFAULT_PROJECTION_SEASON)} projections (ESPN)`,
+  },
+  {
+    value: 'actual',
+    label: `${seasonRangeLabel(DEFAULT_PROJECTION_SEASON - 1)} actuals (ESPN)`,
+  },
+]
+
 export type Projection = {
   id: number
   player_id: number
@@ -41,6 +58,7 @@ export type Projection = {
   missing_stat_keys: string[]
   estimated_stat_keys: string[]
   espn_roto_rank: number | null
+  dataset: Dataset
   prior_season: {
     season: number
     gp: number | null
@@ -81,6 +99,23 @@ export async function fetchProjections(options?: {
   const response = await fetch(`/api/projections?${params.toString()}`)
   if (!response.ok) {
     throw new Error(`Failed to load projections (${response.status})`)
+  }
+  return (await response.json()) as Projection[]
+}
+
+export async function fetchSeasonStats(options?: {
+  source?: string
+  season?: number
+}): Promise<Projection[]> {
+  const source = options?.source ?? DEFAULT_PROJECTION_SOURCE
+  const season = options?.season ?? DEFAULT_PROJECTION_SEASON - 1
+  const params = new URLSearchParams({
+    source,
+    season: String(season),
+  })
+  const response = await fetch(`/api/season_stats?${params.toString()}`)
+  if (!response.ok) {
+    throw new Error(`Failed to load actuals (${response.status})`)
   }
   return (await response.json()) as Projection[]
 }

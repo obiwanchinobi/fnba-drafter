@@ -63,6 +63,7 @@ module Api
       assert_equal 3_112_335, row["espn_player_id"]
       assert_equal "espn", row["source"]
       assert_equal 2027, row["season"]
+      assert_equal "projection", row["dataset"]
       assert_equal 1, row["espn_roto_rank"]
       assert_equal %w[oreb dreb pf dd td], row["missing_stat_keys"]
       assert_equal [], row["estimated_stat_keys"]
@@ -106,6 +107,7 @@ module Api
 
       assert_response :success
       row = JSON.parse(response.body).first
+      assert_equal "projection", row["dataset"]
       assert_equal [ "oreb" ], row["estimated_stat_keys"]
       assert_in_delta 213.4, row["oreb"].to_f
     end
@@ -322,7 +324,9 @@ module Api
       get "/api/projections"
 
       assert_response :success
-      names = JSON.parse(response.body).map { |row| row["full_name"] }
+      json = JSON.parse(response.body)
+      assert json.all? { |row| row["dataset"] == "projection" }
+      names = json.map { |row| row["full_name"] }
       assert_equal [
         "Rank One",
         "Rank Two",

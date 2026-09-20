@@ -52,6 +52,8 @@ function projectionRow(
     missing_stat_keys: [],
     estimated_stat_keys: [],
     espn_roto_rank: overrides.id,
+    dataset: 'projection',
+    prior_season: null,
     ...overrides,
   }
 }
@@ -107,7 +109,7 @@ function stubProjections(rows: Projection[]) {
 }
 
 function playerNames() {
-  const table = screen.getByRole('table', { name: 'Player projections' })
+  const table = screen.getByRole('table')
   return within(table)
     .getAllByRole('row')
     .slice(1)
@@ -362,13 +364,9 @@ test('clicking Rank header sorts ESPN rank ascending first with NULL last', asyn
     'Jayson Tatum',
     'Unranked Player',
   ])
+  expect(screen.getByRole('table').querySelectorAll('tbody tr')).toHaveLength(4)
   expect(
-    screen
-      .getByRole('table', { name: 'Player projections' })
-      .querySelectorAll('tbody tr'),
-  ).toHaveLength(4)
-  expect(
-    within(screen.getByRole('table', { name: 'Player projections' }))
+    within(screen.getByRole('table'))
       .getAllByRole('row')
       .slice(1)
       .map((row) => within(row).getAllByRole('cell')[rankIndex]?.textContent),
@@ -382,7 +380,7 @@ test('clicking Rank header sorts ESPN rank ascending first with NULL last', asyn
     'Unranked Player',
   ])
   expect(
-    within(screen.getByRole('table', { name: 'Player projections' }))
+    within(screen.getByRole('table'))
       .getAllByRole('row')
       .slice(1)
       .map((row) => within(row).getAllByRole('cell')[rankIndex]?.textContent),
@@ -534,4 +532,72 @@ test('does not show the estimate caption when no row is estimated', async () => 
       'Italic values are FNBA estimates. ESPN does not project OREB, DREB, PF, DD or TD.',
     ),
   ).not.toBeInTheDocument()
+})
+
+test('default dataset fetches projections and the chip reads Projection', async () => {
+  stubProjections(THREE_ROWS)
+
+  renderPage(<ProjectionsPage />)
+
+  expect(await screen.findByText('Nikola Jokic')).toBeInTheDocument()
+  expect(screen.getByTestId('dataset-chip')).toHaveTextContent('Projection')
+  expect(
+    screen.getByRole('table', { name: 'Player projections 2026-27' }),
+  ).toBeInTheDocument()
+})
+
+test('switching to actuals fetches season stats and labels the dataset', async () => {
+  const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+    const url = String(input)
+    if (url.startsWith('/api/season_stats')) {
+      return {
+        ok: true,
+        json: async () => [],
+      }
+    }
+    return {
+      ok: true,
+      json: async () => [
+        projectionRow({
+          id: 1,
+          full_name: 'Nikola Jokic',
+          positions: ['C'],
+          nba_team: 'DEN',
+          oreb: 213.4,
+          estimated_stat_keys: ['oreb'],
+        }),
+      ],
+    }
+  })
+  vi.stubGlobal('fetch', fetchMock)
+
+  renderPage(<ProjectionsPage />)
+
+  expect(await screen.findByText('Nikola Jokic')).toBeInTheDocument()
+  expect(
+    screen.getByText(
+      'Italic values are FNBA estimates. ESPN does not project OREB, DREB, PF, DD or TD.',
+    ),
+  ).toBeInTheDocument()
+
+  fireEvent.mouseDown(screen.getByRole('combobox', { name: /dataset/i }))
+  fireEvent.click(
+    screen.getByRole('option', { name: '2025-26 actuals (ESPN)' }),
+  )
+
+  expect(
+    await screen.findByText('No actuals yet. Use Update from source.'),
+  ).toBeInTheDocument()
+  expect(fetchMock).toHaveBeenCalledWith(
+    '/api/season_stats?source=espn&season=2026',
+  )
+  expect(screen.getByTestId('dataset-chip')).toHaveTextContent('Actual')
+  expect(
+    screen.queryByText(
+      'Italic values are FNBA estimates. ESPN does not project OREB, DREB, PF, DD or TD.',
+    ),
+  ).not.toBeInTheDocument()
+  expect(
+    screen.getByRole('table', { name: 'Player actuals 2025-26' }),
+  ).toBeInTheDocument()
 })

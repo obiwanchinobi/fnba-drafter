@@ -16,6 +16,8 @@ afterEach(() => {
 
 const idleHandlers = {
   onSourceChange: () => {},
+  dataset: 'projection' as const,
+  onDatasetChange: () => {},
   search: '',
   onSearchChange: () => {},
   position: 'All',
@@ -35,6 +37,38 @@ test('renders a Source select that includes ESPN', () => {
   fireEvent.mouseDown(screen.getByRole('combobox', { name: /source/i }))
 
   expect(screen.getByRole('option', { name: 'ESPN' })).toBeInTheDocument()
+})
+
+test('renders Dataset select with projection and actual labels', () => {
+  renderToolbar(<ProjectionsToolbar source="espn" {...idleHandlers} />)
+
+  fireEvent.mouseDown(screen.getByRole('combobox', { name: /dataset/i }))
+
+  expect(
+    screen.getByRole('option', { name: '2026-27 projections (ESPN)' }),
+  ).toBeInTheDocument()
+  expect(
+    screen.getByRole('option', { name: '2025-26 actuals (ESPN)' }),
+  ).toBeInTheDocument()
+})
+
+test('changing the dataset select calls onDatasetChange', () => {
+  const onDatasetChange = vi.fn()
+
+  renderToolbar(
+    <ProjectionsToolbar
+      source="espn"
+      {...idleHandlers}
+      onDatasetChange={onDatasetChange}
+    />,
+  )
+
+  fireEvent.mouseDown(screen.getByRole('combobox', { name: /dataset/i }))
+  fireEvent.click(
+    screen.getByRole('option', { name: '2025-26 actuals (ESPN)' }),
+  )
+
+  expect(onDatasetChange).toHaveBeenCalledWith('actual')
 })
 
 test('changing the source select calls onSourceChange', () => {

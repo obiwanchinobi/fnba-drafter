@@ -55,6 +55,7 @@ const jokic: Projection = {
   missing_stat_keys: ['oreb', 'dreb', 'pf', 'dd', 'td'],
   estimated_stat_keys: [],
   espn_roto_rank: 1,
+  dataset: 'projection',
   prior_season: null,
 }
 
@@ -276,6 +277,87 @@ test('estimated cell has no delta when prior_season is null', () => {
     within(cells[orebIndex]).queryByTitle('vs 2025-26 actual per game'),
   ).toBeNull()
   expect(cells[orebIndex].textContent).not.toMatch(/[+-]/)
+})
+
+test('projection dataset aria-label includes the season range', () => {
+  renderTable(
+    <ProjectionsTable
+      dataset="projection"
+      rows={[jokic]}
+      sortBy={null}
+      sortDirection="desc"
+      onSort={() => {}}
+      emptyMessage="No projections yet. Use Update from source."
+    />,
+  )
+
+  expect(
+    screen.getByRole('table', { name: 'Player projections 2026-27' }),
+  ).toBeInTheDocument()
+})
+
+test('actual dataset aria-label includes the season range', () => {
+  const actual: Projection = {
+    ...jokic,
+    dataset: 'actual',
+    season: 2026,
+    espn_roto_rank: 1,
+    estimated_stat_keys: [],
+  }
+
+  renderTable(
+    <ProjectionsTable
+      dataset="actual"
+      rows={[actual]}
+      sortBy={null}
+      sortDirection="desc"
+      onSort={() => {}}
+      emptyMessage="No actuals yet. Use Update from source."
+    />,
+  )
+
+  expect(
+    screen.getByRole('table', { name: 'Player actuals 2025-26' }),
+  ).toBeInTheDocument()
+})
+
+test('actuals rank is an em dash and estimated_stat_keys do not italicize', () => {
+  const actual: Projection = {
+    ...jokic,
+    dataset: 'actual',
+    season: 2026,
+    oreb: 192,
+    estimated_stat_keys: [],
+    espn_roto_rank: 1,
+  }
+
+  renderTable(
+    <ProjectionsTable
+      dataset="actual"
+      rows={[actual]}
+      sortBy={null}
+      sortDirection="desc"
+      onSort={() => {}}
+      emptyMessage="No actuals yet. Use Update from source."
+    />,
+  )
+
+  const row = screen.getByText('Nikola Jokic').closest('tr')
+  expect(row).not.toBeNull()
+  const cells = within(row as HTMLTableRowElement).getAllByRole('cell')
+  const headers = screen
+    .getAllByRole('columnheader')
+    .map((header) => header.textContent)
+  const rankIndex = headers.indexOf('Rank')
+  const orebIndex = headers.indexOf('OREB')
+  expect(rankIndex).toBeGreaterThan(-1)
+  expect(orebIndex).toBeGreaterThan(-1)
+  expect(cells[rankIndex]).toHaveTextContent('—')
+  expect(cells[orebIndex]).not.toHaveStyle({ fontStyle: 'italic' })
+  expect(cells[orebIndex]).not.toHaveAttribute('title')
+  expect(
+    within(cells[orebIndex]).queryByTitle('vs 2025-26 actual per game'),
+  ).toBeNull()
 })
 
 test('ESPN-supplied cats never show a delta', () => {

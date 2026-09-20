@@ -9,5 +9,6 @@ Rails.application.routes.draw do
     get "status", to: "status#show"
     get "projections", to: "projections#index"
     post "projections/refresh", to: "projections#refresh"
+    get "season_stats", to: "season_stats#index"
   end
 end

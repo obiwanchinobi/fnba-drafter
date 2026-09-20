@@ -8,6 +8,7 @@ import TextField from '@mui/material/TextField'
 import ToggleButton from '@mui/material/ToggleButton'
 import ToggleButtonGroup from '@mui/material/ToggleButtonGroup'
 import Typography from '@mui/material/Typography'
+import { DATASET_OPTIONS, type Dataset } from '../api/projections.ts'
 
 const PROJECTION_SOURCES = ['espn'] as const
 
@@ -73,6 +74,8 @@ function nbaTeamOptions(extraTeams: string[]): string[] {
 type ProjectionsToolbarProps = {
   source: string
   onSourceChange: (source: string) => void
+  dataset: Dataset
+  onDatasetChange: (dataset: Dataset) => void
   search: string
   onSearchChange: (search: string) => void
   position: PositionFilter
@@ -87,6 +90,8 @@ type ProjectionsToolbarProps = {
 export default function ProjectionsToolbar({
   source,
   onSourceChange,
+  dataset,
+  onDatasetChange,
   search,
   onSearchChange,
   position,
@@ -120,6 +125,22 @@ export default function ProjectionsToolbar({
           {PROJECTION_SOURCES.map((value) => (
             <MenuItem key={value} value={value}>
               {SOURCE_LABELS[value]}
+            </MenuItem>
+          ))}
+        </Select>
+      </FormControl>
+      <FormControl size="small" sx={{ minWidth: 260 }}>
+        <InputLabel id="projections-dataset-label">Dataset</InputLabel>
+        <Select
+          labelId="projections-dataset-label"
+          id="projections-dataset"
+          label="Dataset"
+          value={dataset}
+          onChange={(event) => onDatasetChange(event.target.value as Dataset)}
+        >
+          {DATASET_OPTIONS.map((option) => (
+            <MenuItem key={option.value} value={option.value}>
+              {option.label}
             </MenuItem>
           ))}
         </Select>
