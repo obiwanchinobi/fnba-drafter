@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_18_213500) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_20_120001) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -21,6 +21,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_18_213500) do
     t.decimal "dd"
     t.decimal "dreb"
     t.integer "espn_roto_rank"
+    t.text "estimated_stat_keys", default: [], null: false, array: true
     t.decimal "fga"
     t.decimal "fgm"
     t.decimal "fta"
@@ -33,6 +34,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_18_213500) do
     t.decimal "pf"
     t.bigint "player_id", null: false
     t.decimal "pts"
+    t.decimal "reb"
     t.integer "season", null: false
     t.string "source", null: false
     t.decimal "stl"
@@ -44,6 +46,37 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_18_213500) do
     t.index ["player_id"], name: "index_player_projections_on_player_id"
     t.index ["source", "season", "player_id"], name: "index_player_projections_on_source_and_season_and_player_id", unique: true
     t.index ["source", "season"], name: "index_player_projections_on_source_and_season"
+  end
+
+  create_table "player_season_stats", force: :cascade do |t|
+    t.decimal "ast"
+    t.decimal "blk"
+    t.datetime "created_at", null: false
+    t.decimal "dd"
+    t.decimal "dreb"
+    t.decimal "fga"
+    t.decimal "fgm"
+    t.decimal "fta"
+    t.decimal "ftm"
+    t.decimal "gp"
+    t.datetime "imported_at", null: false
+    t.decimal "min"
+    t.decimal "oreb"
+    t.decimal "pf"
+    t.bigint "player_id", null: false
+    t.decimal "pts"
+    t.decimal "reb"
+    t.integer "season", null: false
+    t.string "source", null: false
+    t.decimal "stl"
+    t.decimal "td"
+    t.decimal "to"
+    t.decimal "tpa"
+    t.decimal "tpm"
+    t.datetime "updated_at", null: false
+    t.index ["player_id"], name: "index_player_season_stats_on_player_id"
+    t.index ["source", "season", "player_id"], name: "index_player_season_stats_on_source_and_season_and_player_id", unique: true
+    t.index ["source", "season"], name: "index_player_season_stats_on_source_and_season"
   end
 
   create_table "players", force: :cascade do |t|
@@ -60,4 +93,5 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_18_213500) do
   end
 
   add_foreign_key "player_projections", "players"
+  add_foreign_key "player_season_stats", "players"
 end

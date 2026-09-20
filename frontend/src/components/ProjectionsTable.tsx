@@ -241,11 +241,27 @@ export default function ProjectionsTable({
           ) : (
             rows.map((row) => (
               <TableRow key={row.id}>
-                {COLUMNS.map((column) => (
-                  <TableCell key={column.id} sx={cellSx(column, false)}>
-                    {formatCell(row, column.id)}
-                  </TableCell>
-                ))}
+                {COLUMNS.map((column) => {
+                  const estimated = (row.estimated_stat_keys ?? []).includes(
+                    column.id,
+                  )
+                  return (
+                    <TableCell
+                      key={column.id}
+                      sx={{
+                        ...cellSx(column, false),
+                        ...(estimated ? { fontStyle: 'italic' } : {}),
+                      }}
+                      title={
+                        estimated
+                          ? 'FNBA estimate (not projected by ESPN)'
+                          : undefined
+                      }
+                    >
+                      {formatCell(row, column.id)}
+                    </TableCell>
+                  )
+                })}
               </TableRow>
             ))
           )}

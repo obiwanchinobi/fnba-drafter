@@ -53,6 +53,7 @@ const jokic: Projection = {
   ppm: 2050 / 2870,
   imported_at: '2026-09-18T12:00:00.000Z',
   missing_stat_keys: ['oreb', 'dreb', 'pf', 'dd', 'td'],
+  estimated_stat_keys: [],
   espn_roto_rank: 1,
 }
 
@@ -121,4 +122,42 @@ test('exposes sort labels and reports the clicked column', () => {
 
   fireEvent.click(screen.getByRole('button', { name: /^Rank$/ }))
   expect(onSort).toHaveBeenCalledWith('rank')
+})
+
+test('estimated OREB cell is italic with the FNBA estimate title', () => {
+  const estimated = {
+    ...jokic,
+    oreb: 213.4,
+    missing_stat_keys: ['dreb', 'pf', 'dd', 'td'],
+    estimated_stat_keys: ['oreb'],
+  }
+
+  renderTable(
+    <ProjectionsTable
+      rows={[estimated]}
+      sortBy={null}
+      sortDirection="desc"
+      onSort={() => {}}
+      emptyMessage="No projections yet. Use Update from source."
+    />,
+  )
+
+  const row = screen.getByText('Nikola Jokic').closest('tr')
+  expect(row).not.toBeNull()
+  const cells = within(row as HTMLTableRowElement).getAllByRole('cell')
+  const headers = screen
+    .getAllByRole('columnheader')
+    .map((header) => header.textContent)
+  const orebIndex = headers.indexOf('OREB')
+  const ptsIndex = headers.indexOf('PTS')
+  expect(orebIndex).toBeGreaterThan(-1)
+  expect(ptsIndex).toBeGreaterThan(-1)
+
+  expect(cells[orebIndex]).toHaveStyle({ fontStyle: 'italic' })
+  expect(cells[orebIndex]).toHaveAttribute(
+    'title',
+    'FNBA estimate (not projected by ESPN)',
+  )
+  expect(cells[ptsIndex]).not.toHaveStyle({ fontStyle: 'italic' })
+  expect(cells[ptsIndex]).not.toHaveAttribute('title')
 })

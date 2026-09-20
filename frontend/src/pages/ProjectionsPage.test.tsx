@@ -50,6 +50,7 @@ function projectionRow(
     ppm: 2000 / 2870,
     imported_at: '2026-09-18T12:00:00.000Z',
     missing_stat_keys: [],
+    estimated_stat_keys: [],
     espn_roto_rank: overrides.id,
     ...overrides,
   }
@@ -186,6 +187,7 @@ test('shows the player name from a mocked projection row', async () => {
           ppm: 2050 / 2870,
           imported_at: '2026-09-18T12:00:00.000Z',
           missing_stat_keys: ['oreb', 'dreb', 'pf', 'dd', 'td'],
+          estimated_stat_keys: [],
           espn_roto_rank: 1,
         },
       ],
@@ -498,4 +500,38 @@ test('refresh credentials error shows an alert and keeps the current rows', asyn
   )
   expect(screen.getByText('Nikola Jokic')).toBeInTheDocument()
   expect(screen.getByText('Shai Gilgeous-Alexander')).toBeInTheDocument()
+})
+
+test('shows the estimate caption when any row has estimated_stat_keys', async () => {
+  stubProjections([
+    projectionRow({
+      id: 1,
+      full_name: 'Nikola Jokic',
+      positions: ['C'],
+      nba_team: 'DEN',
+      oreb: 213.4,
+      estimated_stat_keys: ['oreb'],
+    }),
+  ])
+
+  renderPage(<ProjectionsPage />)
+
+  expect(
+    await screen.findByText(
+      'Italic values are FNBA estimates. ESPN does not project OREB, DREB, PF, DD or TD.',
+    ),
+  ).toBeInTheDocument()
+})
+
+test('does not show the estimate caption when no row is estimated', async () => {
+  stubProjections(THREE_ROWS)
+
+  renderPage(<ProjectionsPage />)
+
+  expect(await screen.findByText('Nikola Jokic')).toBeInTheDocument()
+  expect(
+    screen.queryByText(
+      'Italic values are FNBA estimates. ESPN does not project OREB, DREB, PF, DD or TD.',
+    ),
+  ).not.toBeInTheDocument()
 })

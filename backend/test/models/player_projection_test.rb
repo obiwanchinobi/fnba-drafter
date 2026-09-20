@@ -2,10 +2,10 @@ require "test_helper"
 
 class PlayerProjectionTest < ActiveSupport::TestCase
   STAT_COLUMNS = %w[
-    gp min fgm fga ftm fta tpm tpa oreb dreb ast stl blk to pf dd td pts
+    gp min fgm fga ftm fta tpm tpa reb oreb dreb ast stl blk to pf dd td pts
   ].freeze
 
-  DERIVED_OR_UNSCORED_COLUMNS = %w[reb fg_pct ft_pct tp_pct ato str ppm].freeze
+  DERIVED_OR_UNSCORED_COLUMNS = %w[fg_pct ft_pct tp_pct ato str ppm].freeze
 
   test "source season and player_id are unique together" do
     player = create_player
@@ -46,6 +46,7 @@ class PlayerProjectionTest < ActiveSupport::TestCase
       fta: nil,
       tpm: nil,
       tpa: nil,
+      reb: nil,
       oreb: nil,
       dreb: nil,
       ast: nil,
@@ -66,10 +67,23 @@ class PlayerProjectionTest < ActiveSupport::TestCase
     end
   end
 
-  test "does not persist total reb or pre-rounded percentage and ratio copies" do
+  test "does not persist pre-rounded percentage and ratio copies" do
     DERIVED_OR_UNSCORED_COLUMNS.each do |column|
       assert_not_includes PlayerProjection.column_names, column
     end
+  end
+
+  test "reb is a stored input column" do
+    projection = create_projection(reb: 978)
+
+    assert_includes PlayerProjection.column_names, "reb"
+    assert_equal 978, projection.reload.reb
+  end
+
+  test "estimated_stat_keys defaults to an empty array" do
+    projection = create_projection
+
+    assert_equal [], projection.reload.estimated_stat_keys
   end
 
   test "missing_stat_keys stores the absent cat keys" do

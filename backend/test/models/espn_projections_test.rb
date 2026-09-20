@@ -11,7 +11,14 @@ class EspnProjectionsTest < ActiveSupport::TestCase
     end
   end
 
-  test "Jokic-like row keeps omitted oreb dreb pf dd td as NULL and listed missing" do
+  test "projection and actuals block ids follow ESPN season prefixes" do
+    assert_equal "102027", Espn.projection_block_id(2027)
+    assert_equal "002026", Espn.actuals_block_id(2026)
+    assert_equal %i[oreb dreb pf dd td], Espn::ESTIMATED_STAT_FIELDS
+    assert_not_includes Espn::UNSCORED_STAT_FIELDS, :reb
+  end
+
+  test "Jokic-like row stores ESPN projection cats including total reb" do
     call_importer
 
     player = Player.find_by!(espn_player_id: 3_112_335)
@@ -22,24 +29,17 @@ class EspnProjectionsTest < ActiveSupport::TestCase
     assert_equal "DEN", player.nba_team
     assert_equal 1, projection.espn_roto_rank
 
-    assert_nil projection.oreb
-    assert_nil projection.dreb
-    assert_nil projection.pf
-    assert_nil projection.dd
-    assert_nil projection.td
-    assert_equal %w[dd dreb oreb pf td], projection.missing_stat_keys.sort
-
     assert_equal 708, projection.ast
     assert_equal 2053, projection.pts
     assert_equal 77, projection.gp
     assert_equal 804, projection.fgm
     assert_equal 1363, projection.fga
+    assert_equal 978, projection.reb
     assert_in_delta 804.0 / 1363.0, projection.fgm / projection.fga, 0.0000001
     assert_not_includes PlayerProjection.column_names, "fg_pct"
-    assert_not_includes PlayerProjection.column_names, "reb"
   end
 
-  test "does not backfill missing 102027 keys from 2026 actuals" do
+  test "derives missing cats instead of copying 2026 actuals" do
     call_importer
 
     projection = espn_2027_projection(Player.find_by!(espn_player_id: 3_112_335))
@@ -48,8 +48,13 @@ class EspnProjectionsTest < ActiveSupport::TestCase
     assert_not_equal 644, projection.dreb
     assert_not_equal 55, projection.dd
     assert_not_equal 34, projection.td
-    assert_nil projection.oreb
-    assert_nil projection.dreb
+    assert_not_nil projection.oreb
+    assert_not_nil projection.dreb
+    assert_not_nil projection.pf
+    assert_not_nil projection.dd
+    assert_not_nil projection.td
+    assert_equal %w[dd dreb oreb pf td], projection.estimated_stat_keys.sort
+    assert_equal [], projection.missing_stat_keys
   end
 
   test "multi-position player persists only PG SG SF PF C" do
@@ -92,9 +97,40 @@ class EspnProjectionsTest < ActiveSupport::TestCase
     assert_equal 50, chen.oreb
     assert_equal 8, chen.dd
     assert_equal [], chen.missing_stat_keys
+    assert_equal [], chen.estimated_stat_keys
     assert_equal "espn", chen.source
     assert_equal 2027, chen.season
     assert_not_nil chen.imported_at
+  end
+
+  test "import writes prior-season actuals and leaves other season-stat rows alone" do
+    jokic = create_player(
+      espn_player_id: 3_112_335,
+      first_name: "Nikola",
+      last_name: "Jokic",
+      full_name: "Nikola Jokic",
+      positions: [ "C" ],
+      nba_team: "DEN"
+    )
+    create_season_stat(player: jokic, source: "other", season: 2026, oreb: 1)
+    create_season_stat(player: jokic, source: "espn", season: 2025, oreb: 2)
+
+    call_importer
+    call_importer
+
+    jokic_row = Player.find_by!(espn_player_id: 3_112_335)
+    chen_row = Player.find_by!(espn_player_id: 424_242)
+    ortega_row = Player.find_by!(espn_player_id: 434_343)
+    jokic_stat = PlayerSeasonStat.find_by!(source: "espn", season: 2026, player: jokic_row)
+    ortega_stat = PlayerSeasonStat.find_by!(source: "espn", season: 2026, player: ortega_row)
+    assert_equal 2, PlayerSeasonStat.where(source: "espn", season: 2026).count
+    assert_equal 0, PlayerSeasonStat.where(source: "espn", season: 2026, player: chen_row).count
+    assert_equal 192, jokic_stat.oreb
+    assert_equal 2520, jokic_stat.min
+    assert_nil ortega_stat.min
+    assert_equal 50, ortega_stat.gp
+    assert_equal 1, PlayerSeasonStat.find_by!(player: jokic_row, source: "other", season: 2026).oreb
+    assert_equal 2, PlayerSeasonStat.find_by!(player: jokic_row, source: "espn", season: 2025).oreb
   end
 
   test "successful import replaces ESPN rows for the season and leaves other sources alone" do
@@ -195,6 +231,18 @@ class EspnProjectionsTest < ActiveSupport::TestCase
           player: player,
           source: "espn",
           season: 2027,
+          imported_at: Time.current
+        }.merge(attrs)
+      )
+    end
+
+    def create_season_stat(**attrs)
+      player = attrs.delete(:player) || create_player
+      PlayerSeasonStat.create!(
+        {
+          player: player,
+          source: "espn",
+          season: 2026,
           imported_at: Time.current
         }.merge(attrs)
       )

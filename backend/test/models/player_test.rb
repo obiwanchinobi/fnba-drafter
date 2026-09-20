@@ -32,6 +32,17 @@ class PlayerTest < ActiveSupport::TestCase
     assert_equal [ projection ], player.player_projections
   end
 
+  test "has many season stats" do
+    player = create_player(espn_player_id: 3_112_335)
+    season_stat = player.season_stats.create!(
+      source: "espn",
+      season: 2026,
+      imported_at: Time.current
+    )
+
+    assert_equal [ season_stat ], player.season_stats
+  end
+
   test "positions only allow PG SG SF PF C" do
     player = new_player(positions: [ "G" ])
 

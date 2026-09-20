@@ -4,6 +4,14 @@ module Espn
   STAT_BLOCK_ID = "102027"
   PAGE_SIZE = 50
 
+  def self.projection_block_id(season)
+    "10#{season}"
+  end
+
+  def self.actuals_block_id(season)
+    "00#{season}"
+  end
+
   SLOT_MAP = {
     0 => "PG",
     1 => "SG",
@@ -12,7 +20,7 @@ module Espn
     4 => "C"
   }.freeze
 
-  # ESPN keys 6 and 19–21 are listed so callers can skip them; they are not columns.
+  # ESPN keys 19–21 are listed so callers can skip them; they are not columns.
   STAT_KEY_MAP = {
     "0" => :pts,
     "1" => :blk,
@@ -38,7 +46,8 @@ module Espn
     "42" => :gp
   }.freeze
 
-  UNSCORED_STAT_FIELDS = %i[reb fg_pct ft_pct tp_pct].freeze
+  UNSCORED_STAT_FIELDS = %i[fg_pct ft_pct tp_pct].freeze
+  ESTIMATED_STAT_FIELDS = %i[oreb dreb pf dd td].freeze
 
   # Frozen from 2027 proTeamSchedules_wl (31 entries, including FA).
   PRO_TEAM_ABBREVS = {

@@ -65,6 +65,7 @@ module Api
       assert_equal 2027, row["season"]
       assert_equal 1, row["espn_roto_rank"]
       assert_equal %w[oreb dreb pf dd td], row["missing_stat_keys"]
+      assert_equal [], row["estimated_stat_keys"]
       assert_equal imported_at.iso8601(3), Time.parse(row["imported_at"]).utc.iso8601(3)
 
       assert_in_delta 82, row["gp"].to_f
@@ -90,6 +91,23 @@ module Api
       assert_in_delta 820.0 / 246.0, row["ato"].to_f
       assert_in_delta 123.0 / 246.0, row["str"].to_f
       assert_in_delta 2_050.0 / 2_870.0, row["ppm"].to_f
+    end
+
+    test "GET /api/projections returns estimated_stat_keys when present" do
+      player = create_player(espn_player_id: 3_112_335)
+      create_projection(
+        player: player,
+        oreb: 213.4,
+        estimated_stat_keys: [ "oreb" ],
+        missing_stat_keys: %w[dreb pf dd td]
+      )
+
+      get "/api/projections"
+
+      assert_response :success
+      row = JSON.parse(response.body).first
+      assert_equal [ "oreb" ], row["estimated_stat_keys"]
+      assert_in_delta 213.4, row["oreb"].to_f
     end
 
     test "GET /api/projections filtered by source omits other sources and seasons" do

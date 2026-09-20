@@ -235,6 +235,9 @@ export default function ProjectionsPage() {
   }, [rows, search, position, teams, sort])
 
   const lastImported = latestImportedAt(rows)
+  const hasEstimates = rows.some(
+    (row) => (row.estimated_stat_keys ?? []).length > 0,
+  )
 
   async function handleUpdateFromSource() {
     setUpdating(true)
@@ -316,17 +319,24 @@ export default function ProjectionsPage() {
         {loading ? (
           <Typography>Loading projections…</Typography>
         ) : (
-          <ProjectionsTable
-            rows={visibleRows}
-            sortBy={sort?.column ?? null}
-            sortDirection={sort?.direction ?? 'desc'}
-            onSort={handleSort}
-            emptyMessage={
-              rows.length === 0
-                ? 'No projections yet. Use Update from source.'
-                : 'No matching players.'
-            }
-          />
+          <>
+            <ProjectionsTable
+              rows={visibleRows}
+              sortBy={sort?.column ?? null}
+              sortDirection={sort?.direction ?? 'desc'}
+              onSort={handleSort}
+              emptyMessage={
+                rows.length === 0
+                  ? 'No projections yet. Use Update from source.'
+                  : 'No matching players.'
+              }
+            />
+            {hasEstimates ? (
+              <Typography variant="caption">
+                Italic values are FNBA estimates. ESPN does not project OREB, DREB, PF, DD or TD.
+              </Typography>
+            ) : null}
+          </>
         )}
       </Stack>
     </Container>

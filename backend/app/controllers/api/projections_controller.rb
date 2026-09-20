@@ -95,6 +95,7 @@ module Api
           ppm: ratio(projection.pts, projection.min),
           imported_at: projection.imported_at,
           missing_stat_keys: projection.missing_stat_keys,
+          estimated_stat_keys: projection.estimated_stat_keys,
           espn_roto_rank: projection.espn_roto_rank
         }
       end

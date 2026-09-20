@@ -39,6 +39,7 @@ export type Projection = {
   ppm: number | null
   imported_at: string
   missing_stat_keys: string[]
+  estimated_stat_keys: string[]
   espn_roto_rank: number | null
 }
 

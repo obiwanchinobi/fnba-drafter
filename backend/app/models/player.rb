@@ -2,6 +2,7 @@ class Player < ApplicationRecord
   ALLOWED_POSITIONS = %w[PG SG SF PF C].freeze
 
   has_many :player_projections, dependent: :destroy
+  has_many :season_stats, class_name: "PlayerSeasonStat", dependent: :destroy
 
   validates :first_name, :last_name, :full_name, :nba_team, presence: true
   validates :espn_player_id, uniqueness: true, allow_nil: true

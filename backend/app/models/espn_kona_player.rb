@@ -1,4 +1,4 @@
-# One player hash from ESPN kona_player_info (stat block 102027).
+# One player hash from ESPN kona_player_info (projection + prior-season actuals).
 class EspnKonaPlayer
   GP_FALLBACK_KEY = "41"
 
@@ -18,8 +18,12 @@ class EspnKonaPlayer
     }
   end
 
+  def primary_position
+    positions.first
+  end
+
   def projection_attributes(imported_at:)
-    stats = projection_stats
+    stats = stats_from_block(Espn.projection_block_id(Espn::SEASON))
     attrs = {}
     missing = []
 
@@ -46,10 +50,38 @@ class EspnKonaPlayer
     )
   end
 
+  def prior_season_attributes(imported_at:)
+    block = actuals_block
+    return nil if block.nil?
+
+    stats = (block["stats"] || {}).transform_keys(&:to_s)
+    attrs = {}
+
+    Espn::STAT_KEY_MAP.each do |espn_key, field|
+      next if Espn::UNSCORED_STAT_FIELDS.include?(field)
+
+      value = stats[espn_key]
+      value = stats[GP_FALLBACK_KEY] if value.nil? && field == :gp
+      attrs[field] = value
+    end
+
+    attrs.merge(
+      source: EspnProjections::SOURCE,
+      season: Espn::SEASON - 1,
+      imported_at: imported_at
+    )
+  end
+
   private
-    def projection_stats
-      block = Array(@info["stats"]).find { |row| row["id"] == Espn::STAT_BLOCK_ID }
+    def stats_from_block(block_id)
+      block = Array(@info["stats"]).find { |row| row["id"] == block_id }
       (block&.[]("stats") || {}).transform_keys(&:to_s)
+    end
+
+    def actuals_block
+      Array(@info["stats"]).find do |row|
+        row["id"] == Espn.actuals_block_id(Espn::SEASON - 1) && row["statSourceId"] == 0
+      end
     end
 
     def positions
