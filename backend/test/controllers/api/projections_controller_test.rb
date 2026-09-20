@@ -110,6 +110,79 @@ module Api
       assert_in_delta 213.4, row["oreb"].to_f
     end
 
+    test "GET /api/projections includes prior_season when a matching season stat exists" do
+      player = create_player(espn_player_id: 3_112_335)
+      create_projection(player: player, source: "espn", season: 2027)
+      create_season_stat(
+        player: player,
+        source: "espn",
+        season: 2026,
+        gp: 70,
+        oreb: 192,
+        dreb: 644,
+        pf: 173,
+        dd: 55,
+        td: 34
+      )
+
+      get "/api/projections"
+
+      assert_response :success
+      prior = JSON.parse(response.body).first.fetch("prior_season")
+      assert_equal 2026, prior.fetch("season")
+      assert_in_delta 70, prior.fetch("gp").to_f
+      assert_in_delta 192, prior.fetch("oreb").to_f
+      assert_in_delta 644, prior.fetch("dreb").to_f
+      assert_in_delta 173, prior.fetch("pf").to_f
+      assert_in_delta 55, prior.fetch("dd").to_f
+      assert_in_delta 34, prior.fetch("td").to_f
+    end
+
+    test "GET /api/projections prior_season is null when no matching season stat exists" do
+      player = create_player(espn_player_id: 1)
+      create_projection(player: player)
+      create_season_stat(player: player, source: "other", season: 2026, oreb: 1)
+      create_season_stat(player: player, source: "espn", season: 2025, oreb: 2)
+
+      get "/api/projections"
+
+      assert_response :success
+      assert_nil JSON.parse(response.body).first.fetch("prior_season")
+    end
+
+    test "GET /api/projections query count does not grow with row count" do
+      2.times do |index|
+        player = create_player(espn_player_id: index + 1, full_name: "Player #{index}")
+        create_projection(player: player)
+        create_season_stat(player: player, gp: 70, oreb: 10)
+      end
+
+      ActiveRecord::Base.uncached do
+        two_row_queries = count_sql_queries { get "/api/projections" }
+        assert_response :success
+        two_rows = JSON.parse(response.body)
+        assert_equal 2, two_rows.size
+        assert two_rows.all? { |row| row.fetch("prior_season") }
+
+        3.times do |index|
+          player = create_player(espn_player_id: index + 10, full_name: "Extra #{index}")
+          create_projection(player: player)
+          create_season_stat(player: player, gp: 70, oreb: 10)
+        end
+
+        five_row_queries = count_sql_queries { get "/api/projections" }
+        assert_response :success
+        five_rows = JSON.parse(response.body)
+        assert_equal 5, five_rows.size
+        assert five_rows.all? { |row| row.fetch("prior_season") }
+        assert_equal two_row_queries, five_row_queries
+
+        assert_queries_match(/FROM ["']player_season_stats["']/, count: 1) do
+          get "/api/projections"
+        end
+      end
+    end
+
     test "GET /api/projections filtered by source omits other sources and seasons" do
       player = create_player(espn_player_id: 3_112_335)
       create_projection(player: player, source: "espn", season: 2027, pts: 2_000, oreb: nil)
@@ -301,6 +374,32 @@ module Api
             imported_at: Time.current
           }.merge(attrs)
         )
+      end
+
+      def create_season_stat(**attrs)
+        player = attrs.delete(:player) || create_player
+        PlayerSeasonStat.create!(
+          {
+            player: player,
+            source: "espn",
+            season: 2026,
+            imported_at: Time.current
+          }.merge(attrs)
+        )
+      end
+
+      def count_sql_queries(&block)
+        count = 0
+        callback = lambda do |_name, _start, _finish, _id, payload|
+          next if payload[:cached]
+          next if payload[:name] == "SCHEMA"
+
+          count += 1
+        end
+
+        ActiveRecord::Base.lease_connection.materialize_transactions
+        ActiveSupport::Notifications.subscribed(callback, "sql.active_record", &block)
+        count
       end
   end
 end

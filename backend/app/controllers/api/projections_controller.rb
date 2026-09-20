@@ -5,14 +5,20 @@ module Api
 
     def index
       source = params.fetch(:source, DEFAULT_SOURCE)
-      season = params.fetch(:season, DEFAULT_SEASON)
+      season = params.fetch(:season, DEFAULT_SEASON).to_i
 
       projections = PlayerProjection
         .includes(:player)
         .where(source: source, season: season)
         .order(Arel.sql("player_projections.espn_roto_rank ASC NULLS LAST, player_projections.pts DESC NULLS LAST"))
 
-      render json: projections.map { |projection| serialize_projection(projection) }
+      prior_by_player_id = PlayerSeasonStat
+        .where(source: source, season: season - 1)
+        .index_by(&:player_id)
+
+      render json: projections.map { |projection|
+        serialize_projection(projection, prior_by_player_id[projection.player_id])
+      }
     end
 
     def refresh
@@ -53,7 +59,7 @@ module Api
         {}
       end
 
-      def serialize_projection(projection)
+      def serialize_projection(projection, prior_stat = nil)
         player = projection.player
         turnovers = projection[:to]
 
@@ -96,7 +102,22 @@ module Api
           imported_at: projection.imported_at,
           missing_stat_keys: projection.missing_stat_keys,
           estimated_stat_keys: projection.estimated_stat_keys,
-          espn_roto_rank: projection.espn_roto_rank
+          espn_roto_rank: projection.espn_roto_rank,
+          prior_season: serialize_prior_season(prior_stat)
+        }
+      end
+
+      def serialize_prior_season(prior_stat)
+        return nil unless prior_stat
+
+        {
+          season: prior_stat.season,
+          gp: number_or_nil(prior_stat.gp),
+          oreb: number_or_nil(prior_stat.oreb),
+          dreb: number_or_nil(prior_stat.dreb),
+          pf: number_or_nil(prior_stat.pf),
+          dd: number_or_nil(prior_stat.dd),
+          td: number_or_nil(prior_stat.td)
         }
       end
 

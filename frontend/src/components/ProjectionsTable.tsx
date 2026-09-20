@@ -6,6 +6,7 @@ import TableContainer from '@mui/material/TableContainer'
 import TableHead from '@mui/material/TableHead'
 import TableRow from '@mui/material/TableRow'
 import TableSortLabel from '@mui/material/TableSortLabel'
+import Typography from '@mui/material/Typography'
 import type { Projection } from '../api/projections.ts'
 
 export type SortDirection = 'asc' | 'desc'
@@ -125,6 +126,86 @@ function cellSx(column: Column, isHeader: boolean) {
     ...(column.numeric ? { fontVariantNumeric: 'tabular-nums' as const } : {}),
     whiteSpace: 'nowrap' as const,
   }
+}
+
+function formatSignedDelta(value: number): string {
+  const formatted = value.toFixed(1)
+  return value >= 0 ? `+${formatted}` : formatted
+}
+
+function priorSeasonLabel(season: number): string {
+  return `${season - 1}-${String(season).slice(-2)}`
+}
+
+function priorSeasonTotal(
+  prior: NonNullable<Projection['prior_season']>,
+  columnId: string,
+): number | null {
+  switch (columnId) {
+    case 'oreb':
+      return toNumber(prior.oreb)
+    case 'dreb':
+      return toNumber(prior.dreb)
+    case 'pf':
+      return toNumber(prior.pf)
+    case 'dd':
+      return toNumber(prior.dd)
+    case 'td':
+      return toNumber(prior.td)
+    default:
+      return null
+  }
+}
+
+function projectionTotal(row: Projection, columnId: string): number | null {
+  switch (columnId) {
+    case 'oreb':
+      return toNumber(row.oreb)
+    case 'dreb':
+      return toNumber(row.dreb)
+    case 'pf':
+      return toNumber(row.pf)
+    case 'dd':
+      return toNumber(row.dd)
+    case 'td':
+      return toNumber(row.td)
+    default:
+      return null
+  }
+}
+
+function estimatedPerGameDelta(
+  row: Projection,
+  columnId: string,
+): number | null {
+  if (!(row.estimated_stat_keys ?? []).includes(columnId)) return null
+  const prior = row.prior_season
+  if (prior == null) return null
+  const priorGp = toNumber(prior.gp)
+  if (priorGp == null || priorGp <= 0) return null
+  const actual = priorSeasonTotal(prior, columnId)
+  const estimate = projectionTotal(row, columnId)
+  const gp = toNumber(row.gp)
+  if (actual == null || estimate == null || gp == null || gp === 0) return null
+  return estimate / gp - actual / priorGp
+}
+
+function estimatedDeltaCaption(row: Projection, columnId: string) {
+  const delta = estimatedPerGameDelta(row, columnId)
+  const prior = row.prior_season
+  if (delta == null || prior == null) return null
+
+  return (
+    <Typography
+      component="span"
+      variant="caption"
+      color="text.secondary"
+      title={`vs ${priorSeasonLabel(prior.season)} actual per game`}
+      sx={{ ml: 0.5 }}
+    >
+      {formatSignedDelta(delta)}
+    </Typography>
+  )
 }
 
 function formatCell(row: Projection, columnId: string): string {
@@ -259,6 +340,7 @@ export default function ProjectionsTable({
                       }
                     >
                       {formatCell(row, column.id)}
+                      {estimatedDeltaCaption(row, column.id)}
                     </TableCell>
                   )
                 })}

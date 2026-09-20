@@ -41,6 +41,15 @@ export type Projection = {
   missing_stat_keys: string[]
   estimated_stat_keys: string[]
   espn_roto_rank: number | null
+  prior_season: {
+    season: number
+    gp: number | null
+    oreb: number | null
+    dreb: number | null
+    pf: number | null
+    dd: number | null
+    td: number | null
+  } | null
 }
 
 export type ProjectionRefresh = {
