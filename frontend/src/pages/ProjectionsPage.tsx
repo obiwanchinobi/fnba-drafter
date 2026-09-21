@@ -20,7 +20,16 @@ import ProjectionsTable, {
 } from '../components/ProjectionsTable.tsx'
 import ProjectionsToolbar, {
   type PositionFilter,
+  type StatView,
 } from '../components/ProjectionsToolbar.tsx'
+import {
+  basisValue,
+  isScoredCat,
+  perGame,
+  toNumber,
+  type Basis,
+} from '../lib/statBasis.ts'
+import { computeZScores, type ZScoresResult } from '../lib/zScores.ts'
 
 const ASC_FIRST_SORT_COLUMNS = new Set<SortColumn>([
   'player',
@@ -32,22 +41,6 @@ const ASC_FIRST_SORT_COLUMNS = new Set<SortColumn>([
 type SortState = {
   column: SortColumn
   direction: SortDirection
-}
-
-function toNumber(value: number | string | null | undefined): number | null {
-  if (value == null || value === '') return null
-  const parsed = typeof value === 'number' ? value : Number(value)
-  return Number.isFinite(parsed) ? parsed : null
-}
-
-function perGame(
-  total: number | string | null | undefined,
-  gp: number | string | null | undefined,
-): number | null {
-  const value = toNumber(total)
-  const games = toNumber(gp)
-  if (value == null || games == null || games === 0) return null
-  return value / games
 }
 
 function playerMatchesSearch(fullName: string, search: string): boolean {
@@ -80,8 +73,22 @@ function playerMatchesTeams(nbaTeam: string, teams: string[]): boolean {
 function getSortValue(
   row: Projection,
   column: SortColumn,
+  options: {
+    view: StatView
+    basis: Basis
+    zScores: ZScoresResult
+  },
 ): number | string | null {
-  const gp = toNumber(row.gp)
+  const { view, basis, zScores } = options
+  if (column === 'z_total') {
+    return zScores.scores.get(row.id)?.total ?? null
+  }
+  if (view === 'z' && isScoredCat(column)) {
+    return zScores.scores.get(row.id)?.cats[column] ?? null
+  }
+  if (isScoredCat(column)) {
+    return basisValue(row, column, basis)
+  }
   switch (column) {
     case 'player':
       return row.full_name
@@ -92,47 +99,9 @@ function getSortValue(
     case 'rank':
       return row.espn_roto_rank
     case 'gp':
-      return gp
+      return toNumber(row.gp)
     case 'min':
-      return perGame(row.min, gp)
-    case 'fgm':
-      return perGame(row.fgm, gp)
-    case 'fg_pct':
-      return toNumber(row.fg_pct)
-    case 'ftm':
-      return perGame(row.ftm, gp)
-    case 'ft_pct':
-      return toNumber(row.ft_pct)
-    case 'tpm':
-      return perGame(row.tpm, gp)
-    case 'tp_pct':
-      return toNumber(row.tp_pct)
-    case 'oreb':
-      return perGame(row.oreb, gp)
-    case 'dreb':
-      return perGame(row.dreb, gp)
-    case 'ast':
-      return perGame(row.ast, gp)
-    case 'ato':
-      return toNumber(row.ato)
-    case 'stl':
-      return perGame(row.stl, gp)
-    case 'str':
-      return toNumber(row.str)
-    case 'blk':
-      return perGame(row.blk, gp)
-    case 'to':
-      return perGame(row.to, gp)
-    case 'pf':
-      return perGame(row.pf, gp)
-    case 'dd':
-      return perGame(row.dd, gp)
-    case 'td':
-      return perGame(row.td, gp)
-    case 'pts':
-      return perGame(row.pts, gp)
-    case 'ppm':
-      return toNumber(row.ppm)
+      return basis === 'total' ? toNumber(row.min) : perGame(row.min, row.gp)
   }
 }
 
@@ -192,6 +161,8 @@ export default function ProjectionsPage() {
   const [position, setPosition] = useState<PositionFilter>('All')
   const [teams, setTeams] = useState<string[]>([])
   const [sort, setSort] = useState<SortState | null>(null)
+  const [view, setView] = useState<StatView>('values')
+  const [basis, setBasis] = useState<Basis>('per_game')
 
   useEffect(() => {
     let cancelled = false
@@ -233,6 +204,11 @@ export default function ProjectionsPage() {
     return [...unique]
   }, [rows])
 
+  const zScores = useMemo(
+    () => computeZScores(rows, basis),
+    [rows, basis],
+  )
+
   const visibleRows = useMemo(() => {
     const filtered = rows.filter(
       (row) =>
@@ -243,13 +219,13 @@ export default function ProjectionsPage() {
     if (!sort) return filtered
     return [...filtered].sort((a, b) => {
       const cmp = compareSortValues(
-        getSortValue(a, sort.column),
-        getSortValue(b, sort.column),
+        getSortValue(a, sort.column, { view, basis, zScores }),
+        getSortValue(b, sort.column, { view, basis, zScores }),
         sort.direction,
       )
       return cmp !== 0 ? cmp : a.id - b.id
     })
-  }, [rows, search, position, teams, sort])
+  }, [rows, search, position, teams, sort, view, basis, zScores])
 
   const lastImported = latestImportedAt(rows)
   const hasEstimates =
@@ -335,6 +311,10 @@ export default function ProjectionsPage() {
           extraTeams={extraTeams}
           onUpdateFromSource={handleUpdateFromSource}
           updating={updating}
+          view={view}
+          onViewChange={setView}
+          basis={basis}
+          onBasisChange={setBasis}
         />
         {error ? <Alert severity="error">{error}</Alert> : null}
         {refreshResult && !error ? (
@@ -357,6 +337,9 @@ export default function ProjectionsPage() {
               sortBy={sort?.column ?? null}
               sortDirection={sort?.direction ?? 'desc'}
               onSort={handleSort}
+              view={view}
+              basis={basis}
+              zScores={zScores}
               emptyMessage={
                 rows.length === 0
                   ? dataset === 'actual'
@@ -365,6 +348,11 @@ export default function ProjectionsPage() {
                   : 'No matching players.'
               }
             />
+            {view === 'z' ? (
+              <Typography variant="caption">
+                {`Z-scores vs the top ${zScores.poolSize} rostered players (8 teams × 16 roster spots, ≥ 20 GP). TO and PF are reversed so positive is better.`}
+              </Typography>
+            ) : null}
             {hasEstimates ? (
               <Typography variant="caption">
                 Italic values are FNBA estimates. ESPN does not project OREB, DREB, PF, DD or TD.

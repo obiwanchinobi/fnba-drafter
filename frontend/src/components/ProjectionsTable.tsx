@@ -1,3 +1,4 @@
+import { useVirtualizer, type Virtualizer } from '@tanstack/react-virtual'
 import Paper from '@mui/material/Paper'
 import Table from '@mui/material/Table'
 import TableBody from '@mui/material/TableBody'
@@ -7,11 +8,23 @@ import TableHead from '@mui/material/TableHead'
 import TableRow from '@mui/material/TableRow'
 import TableSortLabel from '@mui/material/TableSortLabel'
 import Typography from '@mui/material/Typography'
+import { useRef } from 'react'
 import {
   DEFAULT_PROJECTION_SEASON,
   type Dataset,
   type Projection,
 } from '../api/projections.ts'
+import {
+  basisRatioParts,
+  basisValue,
+  isScoredCat,
+  perGame,
+  toNumber,
+  type Basis,
+  type ScoredCat,
+} from '../lib/statBasis.ts'
+import type { ZScoresResult } from '../lib/zScores.ts'
+import type { StatView } from './ProjectionsToolbar.tsx'
 
 export type SortDirection = 'asc' | 'desc'
 
@@ -41,13 +54,16 @@ export type SortColumn =
   | 'td'
   | 'pts'
   | 'ppm'
+  | 'z_total'
 
 type Column = {
   id: string
   label: string
+  zLabel?: string
   sortColumn?: SortColumn
   sticky?: 'player' | 'pos' | 'team'
   numeric?: boolean
+  zOnly?: boolean
 }
 
 const COLUMNS: Column[] = [
@@ -56,13 +72,14 @@ const COLUMNS: Column[] = [
   { id: 'team', label: 'Team', sortColumn: 'team', sticky: 'team' },
   { id: 'inj', label: 'Inj' },
   { id: 'rank', label: 'Rank', sortColumn: 'rank', numeric: true },
+  { id: 'z_total', label: 'Total Z', sortColumn: 'z_total', numeric: true, zOnly: true },
   { id: 'gp', label: 'GP', sortColumn: 'gp', numeric: true },
   { id: 'min', label: 'MIN', sortColumn: 'min', numeric: true },
-  { id: 'fgm', label: 'FGM/FGA', sortColumn: 'fgm', numeric: true },
+  { id: 'fgm', label: 'FGM/FGA', zLabel: 'FGM', sortColumn: 'fgm', numeric: true },
   { id: 'fg_pct', label: 'FG%', sortColumn: 'fg_pct', numeric: true },
-  { id: 'ftm', label: 'FTM/FTA', sortColumn: 'ftm', numeric: true },
+  { id: 'ftm', label: 'FTM/FTA', zLabel: 'FTM', sortColumn: 'ftm', numeric: true },
   { id: 'ft_pct', label: 'FT%', sortColumn: 'ft_pct', numeric: true },
-  { id: 'tpm', label: '3PM/3PA', sortColumn: 'tpm', numeric: true },
+  { id: 'tpm', label: '3PM/3PA', zLabel: '3PM', sortColumn: 'tpm', numeric: true },
   { id: 'tp_pct', label: '3P%', sortColumn: 'tp_pct', numeric: true },
   { id: 'oreb', label: 'OREB', sortColumn: 'oreb', numeric: true },
   { id: 'dreb', label: 'DREB', sortColumn: 'dreb', numeric: true },
@@ -82,20 +99,51 @@ const COLUMNS: Column[] = [
 const STICKY_LEFT = { player: 0, pos: 168, team: 240 } as const
 const STICKY_MIN_WIDTH = { player: 168, pos: 72, team: 64 } as const
 
-function toNumber(value: number | string | null | undefined): number | null {
-  if (value == null || value === '') return null
-  const parsed = typeof value === 'number' ? value : Number(value)
-  return Number.isFinite(parsed) ? parsed : null
-}
+export const ROW_HEIGHT = 33
 
-function perGame(
-  total: number | string | null | undefined,
-  gp: number | string | null | undefined,
-): number | null {
-  const value = toNumber(total)
-  const games = toNumber(gp)
-  if (value == null || games == null || games === 0) return null
-  return value / games
+// virtual-core's default rect read is offsetHeight, which is 0 without layout.
+function observeContainerRect(
+  instance: Virtualizer<HTMLDivElement, Element>,
+  onChange: (rect: { width: number; height: number }) => void,
+) {
+  const element = instance.scrollElement
+  if (!element) return
+  const targetWindow = instance.targetWindow
+  if (!targetWindow) return
+
+  const publish = (rect: { width: number; height: number }) => {
+    onChange({
+      width: Math.round(rect.width),
+      height: Math.round(rect.height),
+    })
+  }
+
+  publish(element.getBoundingClientRect())
+
+  if (typeof targetWindow.ResizeObserver !== 'function') {
+    return () => {}
+  }
+
+  const observer = new targetWindow.ResizeObserver((entries) => {
+    const apply = () => {
+      const box = entries[0]?.borderBoxSize?.[0]
+      if (box) {
+        publish({ width: box.inlineSize, height: box.blockSize })
+        return
+      }
+      publish(element.getBoundingClientRect())
+    }
+    if (instance.options.useAnimationFrameWithResizeObserver) {
+      targetWindow.requestAnimationFrame(apply)
+    } else {
+      apply()
+    }
+  })
+
+  observer.observe(element)
+  return () => {
+    observer.unobserve(element)
+  }
 }
 
 function formatStat(value: number | null, digits = 1): string {
@@ -103,15 +151,40 @@ function formatStat(value: number | null, digits = 1): string {
   return value.toFixed(digits)
 }
 
+function formatZ(value: number | null): string {
+  if (value == null) return '—'
+  const formatted = value.toFixed(2)
+  return value >= 0 ? `+${formatted}` : formatted
+}
+
+function columnLabel(column: Column, view: StatView): string {
+  if (view === 'z' && column.zLabel) return column.zLabel
+  return column.label
+}
+
+function countingDigits(
+  row: Projection,
+  columnId: string,
+  basis: Basis,
+): number {
+  if (basis !== 'total') return 1
+  return (row.estimated_stat_keys ?? []).includes(columnId) ? 1 : 0
+}
+
 function formatMadeAttempted(
-  made: number | null,
-  attempted: number | null,
-  gp: number | null,
+  row: Projection,
+  cat: 'fg_pct' | 'ft_pct' | 'tp_pct',
+  madeColumnId: string,
+  basis: Basis,
 ): string {
-  const madePg = perGame(made, gp)
-  const attemptedPg = perGame(attempted, gp)
-  if (madePg == null && attemptedPg == null) return '—'
-  return `${formatStat(madePg)}/${formatStat(attemptedPg)}`
+  const { numerator, denominator } = basisRatioParts(row, cat, basis)
+  if (numerator == null && denominator == null) return '—'
+  const digits = countingDigits(row, madeColumnId, basis)
+  return `${formatStat(numerator, digits)}/${formatStat(denominator, digits)}`
+}
+
+function formatCounting(row: Projection, cat: ScoredCat, basis: Basis): string {
+  return formatStat(basisValue(row, cat, basis), countingDigits(row, cat, basis))
 }
 
 function stickySx(column: 'player' | 'pos' | 'team', isHeader: boolean) {
@@ -212,24 +285,40 @@ function estimatedDeltaCaption(row: Projection, columnId: string) {
   )
 }
 
-function tableAriaLabel(dataset: Dataset, rows: Projection[]): string {
+function tableAriaLabel(
+  dataset: Dataset,
+  rows: Projection[],
+  view: StatView,
+  basis: Basis,
+): string {
   const season =
     rows[0]?.season ??
     (dataset === 'actual'
       ? DEFAULT_PROJECTION_SEASON - 1
       : DEFAULT_PROJECTION_SEASON)
   const range = priorSeasonLabel(season)
-  return dataset === 'actual'
-    ? `Player actuals ${range}`
-    : `Player projections ${range}`
+  const base =
+    dataset === 'actual'
+      ? `Player actuals ${range}`
+      : `Player projections ${range}`
+  const withView = view === 'z' ? `${base}, z-scores` : base
+  return basis === 'total' ? `${withView}, season totals` : withView
 }
 
 function formatCell(
   row: Projection,
   columnId: string,
   dataset: Dataset,
+  view: StatView,
+  zScores: ZScoresResult | null,
+  basis: Basis,
 ): string {
-  const gp = toNumber(row.gp)
+  if (view === 'z' && columnId === 'z_total') {
+    return formatZ(zScores?.scores.get(row.id)?.total ?? null)
+  }
+  if (view === 'z' && isScoredCat(columnId)) {
+    return formatZ(zScores?.scores.get(row.id)?.cats[columnId] ?? null)
+  }
   switch (columnId) {
     case 'player':
       return row.full_name
@@ -243,45 +332,48 @@ function formatCell(
       if (dataset === 'actual' || row.espn_roto_rank == null) return '—'
       return String(row.espn_roto_rank)
     case 'gp':
-      return formatStat(gp, 0)
+      return formatStat(toNumber(row.gp), 0)
     case 'min':
-      return formatStat(perGame(row.min, gp))
+      return formatStat(
+        basis === 'total' ? toNumber(row.min) : perGame(row.min, row.gp),
+        countingDigits(row, 'min', basis),
+      )
     case 'fgm':
-      return formatMadeAttempted(row.fgm, row.fga, gp)
+      return formatMadeAttempted(row, 'fg_pct', 'fgm', basis)
     case 'fg_pct':
       return formatStat(toNumber(row.fg_pct), 3)
     case 'ftm':
-      return formatMadeAttempted(row.ftm, row.fta, gp)
+      return formatMadeAttempted(row, 'ft_pct', 'ftm', basis)
     case 'ft_pct':
       return formatStat(toNumber(row.ft_pct), 3)
     case 'tpm':
-      return formatMadeAttempted(row.tpm, row.tpa, gp)
+      return formatMadeAttempted(row, 'tp_pct', 'tpm', basis)
     case 'tp_pct':
       return formatStat(toNumber(row.tp_pct), 3)
     case 'oreb':
-      return formatStat(perGame(row.oreb, gp))
+      return formatCounting(row, 'oreb', basis)
     case 'dreb':
-      return formatStat(perGame(row.dreb, gp))
+      return formatCounting(row, 'dreb', basis)
     case 'ast':
-      return formatStat(perGame(row.ast, gp))
+      return formatCounting(row, 'ast', basis)
     case 'ato':
       return formatStat(toNumber(row.ato), 2)
     case 'stl':
-      return formatStat(perGame(row.stl, gp))
+      return formatCounting(row, 'stl', basis)
     case 'str':
       return formatStat(toNumber(row.str), 2)
     case 'blk':
-      return formatStat(perGame(row.blk, gp))
+      return formatCounting(row, 'blk', basis)
     case 'to':
-      return formatStat(perGame(row.to, gp))
+      return formatCounting(row, 'to', basis)
     case 'pf':
-      return formatStat(perGame(row.pf, gp))
+      return formatCounting(row, 'pf', basis)
     case 'dd':
-      return formatStat(perGame(row.dd, gp))
+      return formatCounting(row, 'dd', basis)
     case 'td':
-      return formatStat(perGame(row.td, gp))
+      return formatCounting(row, 'td', basis)
     case 'pts':
-      return formatStat(perGame(row.pts, gp))
+      return formatCounting(row, 'pts', basis)
     case 'ppm':
       return formatStat(toNumber(row.ppm), 3)
     default:
@@ -296,6 +388,9 @@ type ProjectionsTableProps = {
   onSort: (column: SortColumn) => void
   emptyMessage: string
   dataset?: Dataset
+  view?: StatView
+  basis?: Basis
+  zScores?: ZScoresResult | null
 }
 
 export default function ProjectionsTable({
@@ -305,14 +400,46 @@ export default function ProjectionsTable({
   onSort,
   emptyMessage,
   dataset = 'projection',
+  view = 'values',
+  basis = 'per_game',
+  zScores = null,
 }: ProjectionsTableProps) {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const visibleColumns = COLUMNS.filter((column) => view === 'z' || !column.zOnly)
+  const showDeltaCaption =
+    dataset === 'projection' && view === 'values' && basis === 'per_game'
+  const virtualizer = useVirtualizer({
+    count: rows.length,
+    getScrollElement: () => containerRef.current,
+    estimateSize: () => ROW_HEIGHT,
+    overscan: 10,
+    observeElementRect: observeContainerRect,
+  })
+  const virtualItems = rows.length > 0 ? virtualizer.getVirtualItems() : []
+  const paddingTop = virtualItems[0]?.start ?? 0
+  const paddingBottom =
+    rows.length > 0
+      ? virtualizer.getTotalSize() - (virtualItems.at(-1)?.end ?? 0)
+      : 0
+
   return (
-    <TableContainer component={Paper} variant="outlined">
-      <Table size="small" aria-label={tableAriaLabel(dataset, rows)}>
+    <TableContainer
+      component={Paper}
+      variant="outlined"
+      ref={containerRef}
+      // 346px is the measured chrome: title, toolbar, import line, both captions, page padding.
+      sx={{ maxHeight: 'calc(100vh - 346px)', overflow: 'auto' }}
+    >
+      <Table
+        stickyHeader
+        size="small"
+        aria-label={tableAriaLabel(dataset, rows, view, basis)}
+      >
         <TableHead>
           <TableRow>
-            {COLUMNS.map((column) => {
+            {visibleColumns.map((column) => {
               const active = column.sortColumn != null && sortBy === column.sortColumn
+              const label = columnLabel(column, view)
               return (
                 <TableCell
                   key={column.id}
@@ -327,10 +454,10 @@ export default function ProjectionsTable({
                         if (column.sortColumn) onSort(column.sortColumn)
                       }}
                     >
-                      {column.label}
+                      {label}
                     </TableSortLabel>
                   ) : (
-                    column.label
+                    label
                   )}
                 </TableCell>
               )
@@ -340,37 +467,65 @@ export default function ProjectionsTable({
         <TableBody>
           {rows.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={COLUMNS.length}>{emptyMessage}</TableCell>
+              <TableCell colSpan={visibleColumns.length}>{emptyMessage}</TableCell>
             </TableRow>
           ) : (
-            rows.map((row) => (
-              <TableRow key={row.id}>
-                {COLUMNS.map((column) => {
-                  const estimated =
-                    dataset === 'projection' &&
-                    (row.estimated_stat_keys ?? []).includes(column.id)
-                  return (
-                    <TableCell
-                      key={column.id}
-                      sx={{
-                        ...cellSx(column, false),
-                        ...(estimated ? { fontStyle: 'italic' } : {}),
-                      }}
-                      title={
-                        estimated
-                          ? 'FNBA estimate (not projected by ESPN)'
-                          : undefined
-                      }
-                    >
-                      {formatCell(row, column.id, dataset)}
-                      {dataset === 'projection'
-                        ? estimatedDeltaCaption(row, column.id)
-                        : null}
-                    </TableCell>
-                  )
-                })}
-              </TableRow>
-            ))
+            <>
+              {paddingTop > 0 ? (
+                <TableRow aria-hidden style={{ height: paddingTop }}>
+                  <TableCell
+                    colSpan={visibleColumns.length}
+                    sx={{ p: 0, border: 0 }}
+                  />
+                </TableRow>
+              ) : null}
+              {virtualItems.map((virtualRow) => {
+                const row = rows[virtualRow.index]
+                return (
+                  <TableRow key={row.id}>
+                    {visibleColumns.map((column) => {
+                      const estimated =
+                        dataset === 'projection' &&
+                        (row.estimated_stat_keys ?? []).includes(column.id)
+                      return (
+                        <TableCell
+                          key={column.id}
+                          sx={{
+                            ...cellSx(column, false),
+                            ...(estimated ? { fontStyle: 'italic' } : {}),
+                          }}
+                          title={
+                            estimated
+                              ? 'FNBA estimate (not projected by ESPN)'
+                              : undefined
+                          }
+                        >
+                          {formatCell(
+                            row,
+                            column.id,
+                            dataset,
+                            view,
+                            zScores,
+                            basis,
+                          )}
+                          {showDeltaCaption
+                            ? estimatedDeltaCaption(row, column.id)
+                            : null}
+                        </TableCell>
+                      )
+                    })}
+                  </TableRow>
+                )
+              })}
+              {paddingBottom > 0 ? (
+                <TableRow aria-hidden style={{ height: paddingBottom }}>
+                  <TableCell
+                    colSpan={visibleColumns.length}
+                    sx={{ p: 0, border: 0 }}
+                  />
+                </TableRow>
+              ) : null}
+            </>
           )}
         </TableBody>
       </Table>

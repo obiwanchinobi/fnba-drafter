@@ -9,6 +9,7 @@ import ToggleButton from '@mui/material/ToggleButton'
 import ToggleButtonGroup from '@mui/material/ToggleButtonGroup'
 import Typography from '@mui/material/Typography'
 import { DATASET_OPTIONS, type Dataset } from '../api/projections.ts'
+import type { Basis } from '../lib/statBasis.ts'
 
 const PROJECTION_SOURCES = ['espn'] as const
 
@@ -28,6 +29,8 @@ export const POSITION_FILTERS = [
 ] as const
 
 export type PositionFilter = (typeof POSITION_FILTERS)[number]
+
+export type StatView = 'values' | 'z'
 
 export const ESPN_NBA_TEAMS = [
   'ATL',
@@ -85,6 +88,10 @@ type ProjectionsToolbarProps = {
   extraTeams?: string[]
   onUpdateFromSource?: () => void
   updating?: boolean
+  view?: StatView
+  onViewChange?: (view: StatView) => void
+  basis?: Basis
+  onBasisChange?: (basis: Basis) => void
 }
 
 export default function ProjectionsToolbar({
@@ -101,6 +108,10 @@ export default function ProjectionsToolbar({
   extraTeams = [],
   onUpdateFromSource,
   updating = false,
+  view = 'values',
+  onViewChange,
+  basis = 'per_game',
+  onBasisChange,
 }: ProjectionsToolbarProps) {
   const sourceLabel = SOURCE_LABELS[source] ?? source
   const teamOptions = nbaTeamOptions(extraTeams)
@@ -167,6 +178,30 @@ export default function ProjectionsToolbar({
             {chip}
           </ToggleButton>
         ))}
+      </ToggleButtonGroup>
+      <ToggleButtonGroup
+        exclusive
+        size="small"
+        value={view}
+        onChange={(_event, value: StatView | null) => {
+          if (value != null) onViewChange?.(value)
+        }}
+        aria-label="View"
+      >
+        <ToggleButton value="values">Values</ToggleButton>
+        <ToggleButton value="z">Z-scores</ToggleButton>
+      </ToggleButtonGroup>
+      <ToggleButtonGroup
+        exclusive
+        size="small"
+        value={basis}
+        onChange={(_event, value: Basis | null) => {
+          if (value != null) onBasisChange?.(value)
+        }}
+        aria-label="Basis"
+      >
+        <ToggleButton value="per_game">Per game</ToggleButton>
+        <ToggleButton value="total">Season totals</ToggleButton>
       </ToggleButtonGroup>
       <FormControl size="small" sx={{ minWidth: 160 }}>
         <InputLabel id="projections-team-label" shrink>
