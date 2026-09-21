@@ -13,6 +13,23 @@ function renderTable(ui: ReactElement) {
   return render(<ThemeProvider theme={theme}>{ui}</ThemeProvider>)
 }
 
+function cellsFor(playerName: string) {
+  const row = screen.getByText(playerName).closest('tr')
+  expect(row).not.toBeNull()
+  const cells = within(row as HTMLTableRowElement).getAllByRole('cell')
+  const headers = screen
+    .getAllByRole('columnheader')
+    .map((header) => header.textContent)
+  return { cells, headers }
+}
+
+function cellText(playerName: string, header: string) {
+  const { cells, headers } = cellsFor(playerName)
+  const index = headers.indexOf(header)
+  expect(index).toBeGreaterThan(-1)
+  return cells[index]
+}
+
 afterEach(() => {
   cleanup()
 })
@@ -599,5 +616,153 @@ test('z view aria-label gains a z-scores suffix', () => {
 
   expect(
     screen.getByRole('table', { name: 'Player projections 2026-27, z-scores' }),
+  ).toBeInTheDocument()
+})
+
+test('PTS shows 25.0 per game and 2050 on season totals', () => {
+  const { rerender } = renderTable(
+    <ProjectionsTable
+      rows={[jokic]}
+      sortBy={null}
+      sortDirection="desc"
+      onSort={() => {}}
+      emptyMessage="No projections yet. Use Update from source."
+      basis="per_game"
+    />,
+  )
+
+  expect(cellText('Nikola Jokic', 'PTS')).toHaveTextContent('25.0')
+  expect(cellText('Nikola Jokic', 'GP')).toHaveTextContent('82')
+  expect(cellText('Nikola Jokic', 'MIN')).toHaveTextContent('35.0')
+
+  rerender(
+    <ThemeProvider theme={theme}>
+      <ProjectionsTable
+        rows={[jokic]}
+        sortBy={null}
+        sortDirection="desc"
+        onSort={() => {}}
+        emptyMessage="No projections yet. Use Update from source."
+        basis="total"
+      />
+    </ThemeProvider>,
+  )
+
+  expect(cellText('Nikola Jokic', 'PTS')).toHaveTextContent('2050')
+  expect(cellText('Nikola Jokic', 'PTS').textContent).toBe('2050')
+  expect(cellText('Nikola Jokic', 'GP')).toHaveTextContent('82')
+  expect(cellText('Nikola Jokic', 'MIN')).toHaveTextContent('2870')
+})
+
+test('FGM/FGA shows combined season totals', () => {
+  renderTable(
+    <ProjectionsTable
+      rows={[jokic]}
+      sortBy={null}
+      sortDirection="desc"
+      onSort={() => {}}
+      emptyMessage="No projections yet. Use Update from source."
+      basis="total"
+    />,
+  )
+
+  expect(cellText('Nikola Jokic', 'FGM/FGA')).toHaveTextContent('820/1400')
+})
+
+test('estimated DD keeps one decimal on season totals', () => {
+  const estimated = {
+    ...jokic,
+    dd: 40.5,
+    missing_stat_keys: ['oreb', 'dreb', 'pf', 'td'],
+    estimated_stat_keys: ['dd'],
+  }
+
+  renderTable(
+    <ProjectionsTable
+      rows={[estimated]}
+      sortBy={null}
+      sortDirection="desc"
+      onSort={() => {}}
+      emptyMessage="No projections yet. Use Update from source."
+      basis="total"
+    />,
+  )
+
+  expect(cellText('Nikola Jokic', 'DD').textContent).toBe('40.5')
+})
+
+test('delta caption is absent on season totals', () => {
+  const estimated = {
+    ...jokic,
+    gp: 72,
+    oreb: 213,
+    missing_stat_keys: ['dreb', 'pf', 'dd', 'td'],
+    estimated_stat_keys: ['oreb'],
+    prior_season: priorSeason,
+  }
+
+  renderTable(
+    <ProjectionsTable
+      rows={[estimated]}
+      sortBy={null}
+      sortDirection="desc"
+      onSort={() => {}}
+      emptyMessage="No projections yet. Use Update from source."
+      basis="total"
+    />,
+  )
+
+  const orebCell = cellText('Nikola Jokic', 'OREB')
+  expect(within(orebCell).queryByTitle('vs 2025-26 actual per game')).toBeNull()
+  expect(orebCell).toHaveStyle({ fontStyle: 'italic' })
+})
+
+test('FG% is identical on per-game and season totals', () => {
+  const { rerender } = renderTable(
+    <ProjectionsTable
+      rows={[jokic]}
+      sortBy={null}
+      sortDirection="desc"
+      onSort={() => {}}
+      emptyMessage="No projections yet. Use Update from source."
+      basis="per_game"
+    />,
+  )
+
+  const perGamePct = cellText('Nikola Jokic', 'FG%').textContent
+
+  rerender(
+    <ThemeProvider theme={theme}>
+      <ProjectionsTable
+        rows={[jokic]}
+        sortBy={null}
+        sortDirection="desc"
+        onSort={() => {}}
+        emptyMessage="No projections yet. Use Update from source."
+        basis="total"
+      />
+    </ThemeProvider>,
+  )
+
+  expect(cellText('Nikola Jokic', 'FG%').textContent).toBe(perGamePct)
+})
+
+test('totals basis aria-label gains a season totals suffix', () => {
+  renderTable(
+    <ProjectionsTable
+      dataset="projection"
+      rows={[jokic]}
+      sortBy={null}
+      sortDirection="desc"
+      onSort={() => {}}
+      emptyMessage="No projections yet. Use Update from source."
+      basis="total"
+    />,
+  )
+
+  expect(
+    screen.getByRole('table', {
+      name: 'Player projections 2026-27, season totals',
+    }),
   ).toBeInTheDocument()
 })

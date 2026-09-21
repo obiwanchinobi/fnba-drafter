@@ -221,3 +221,33 @@ test('clicking Z-scores calls onViewChange with z', () => {
   fireEvent.click(screen.getByRole('button', { name: 'Z-scores' }))
   expect(onViewChange).toHaveBeenCalledWith('z')
 })
+
+test('renders Per game and Season totals basis buttons', () => {
+  renderToolbar(<ProjectionsToolbar source="espn" {...idleHandlers} />)
+
+  const group = screen.getByRole('group', { name: 'Basis' })
+  expect(group).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Per game' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  )
+  expect(screen.getByRole('button', { name: 'Season totals' })).toHaveAttribute(
+    'aria-pressed',
+    'false',
+  )
+})
+
+test('clicking Season totals calls onBasisChange with total', () => {
+  const onBasisChange = vi.fn()
+
+  renderToolbar(
+    <ProjectionsToolbar
+      source="espn"
+      {...idleHandlers}
+      onBasisChange={onBasisChange}
+    />,
+  )
+
+  fireEvent.click(screen.getByRole('button', { name: 'Season totals' }))
+  expect(onBasisChange).toHaveBeenCalledWith('total')
+})

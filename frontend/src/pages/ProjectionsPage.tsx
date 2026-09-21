@@ -86,7 +86,9 @@ function getSortValue(
   if (view === 'z' && isScoredCat(column)) {
     return zScores.scores.get(row.id)?.cats[column] ?? null
   }
-  const gp = toNumber(row.gp)
+  if (isScoredCat(column)) {
+    return basisValue(row, column, basis)
+  }
   switch (column) {
     case 'player':
       return row.full_name
@@ -97,47 +99,9 @@ function getSortValue(
     case 'rank':
       return row.espn_roto_rank
     case 'gp':
-      return gp
+      return toNumber(row.gp)
     case 'min':
-      return perGame(row.min, gp)
-    case 'fgm':
-      return basisValue(row, 'fgm', basis)
-    case 'fg_pct':
-      return toNumber(row.fg_pct)
-    case 'ftm':
-      return basisValue(row, 'ftm', basis)
-    case 'ft_pct':
-      return toNumber(row.ft_pct)
-    case 'tpm':
-      return basisValue(row, 'tpm', basis)
-    case 'tp_pct':
-      return toNumber(row.tp_pct)
-    case 'oreb':
-      return basisValue(row, 'oreb', basis)
-    case 'dreb':
-      return basisValue(row, 'dreb', basis)
-    case 'ast':
-      return basisValue(row, 'ast', basis)
-    case 'ato':
-      return toNumber(row.ato)
-    case 'stl':
-      return basisValue(row, 'stl', basis)
-    case 'str':
-      return toNumber(row.str)
-    case 'blk':
-      return basisValue(row, 'blk', basis)
-    case 'to':
-      return basisValue(row, 'to', basis)
-    case 'pf':
-      return basisValue(row, 'pf', basis)
-    case 'dd':
-      return basisValue(row, 'dd', basis)
-    case 'td':
-      return basisValue(row, 'td', basis)
-    case 'pts':
-      return basisValue(row, 'pts', basis)
-    case 'ppm':
-      return toNumber(row.ppm)
+      return basis === 'total' ? toNumber(row.min) : perGame(row.min, row.gp)
   }
 }
 
@@ -198,7 +162,7 @@ export default function ProjectionsPage() {
   const [teams, setTeams] = useState<string[]>([])
   const [sort, setSort] = useState<SortState | null>(null)
   const [view, setView] = useState<StatView>('values')
-  const basis: Basis = 'per_game'
+  const [basis, setBasis] = useState<Basis>('per_game')
 
   useEffect(() => {
     let cancelled = false
@@ -349,6 +313,8 @@ export default function ProjectionsPage() {
           updating={updating}
           view={view}
           onViewChange={setView}
+          basis={basis}
+          onBasisChange={setBasis}
         />
         {error ? <Alert severity="error">{error}</Alert> : null}
         {refreshResult && !error ? (

@@ -9,6 +9,7 @@ import ToggleButton from '@mui/material/ToggleButton'
 import ToggleButtonGroup from '@mui/material/ToggleButtonGroup'
 import Typography from '@mui/material/Typography'
 import { DATASET_OPTIONS, type Dataset } from '../api/projections.ts'
+import type { Basis } from '../lib/statBasis.ts'
 
 const PROJECTION_SOURCES = ['espn'] as const
 
@@ -89,6 +90,8 @@ type ProjectionsToolbarProps = {
   updating?: boolean
   view?: StatView
   onViewChange?: (view: StatView) => void
+  basis?: Basis
+  onBasisChange?: (basis: Basis) => void
 }
 
 export default function ProjectionsToolbar({
@@ -107,6 +110,8 @@ export default function ProjectionsToolbar({
   updating = false,
   view = 'values',
   onViewChange,
+  basis = 'per_game',
+  onBasisChange,
 }: ProjectionsToolbarProps) {
   const sourceLabel = SOURCE_LABELS[source] ?? source
   const teamOptions = nbaTeamOptions(extraTeams)
@@ -185,6 +190,18 @@ export default function ProjectionsToolbar({
       >
         <ToggleButton value="values">Values</ToggleButton>
         <ToggleButton value="z">Z-scores</ToggleButton>
+      </ToggleButtonGroup>
+      <ToggleButtonGroup
+        exclusive
+        size="small"
+        value={basis}
+        onChange={(_event, value: Basis | null) => {
+          if (value != null) onBasisChange?.(value)
+        }}
+        aria-label="Basis"
+      >
+        <ToggleButton value="per_game">Per game</ToggleButton>
+        <ToggleButton value="total">Season totals</ToggleButton>
       </ToggleButtonGroup>
       <FormControl size="small" sx={{ minWidth: 160 }}>
         <InputLabel id="projections-team-label" shrink>

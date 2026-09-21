@@ -769,6 +769,82 @@ test('search filtering does not change a player displayed z', async () => {
   ).toHaveTextContent('-1.00')
 })
 
+test('PTS sort follows the active basis without refetching', async () => {
+  const fetchMock = stubProjections([
+    projectionRow({
+      id: 1,
+      full_name: 'High Rate',
+      positions: ['C'],
+      nba_team: 'DEN',
+      gp: 60,
+      pts: 1800,
+    }),
+    projectionRow({
+      id: 2,
+      full_name: 'High Volume',
+      positions: ['PG'],
+      nba_team: 'OKC',
+      gp: 82,
+      pts: 2050,
+    }),
+  ])
+
+  renderPage(<ProjectionsPage />)
+
+  expect(await screen.findByText('High Rate')).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: /^PTS$/ }))
+  expect(playerNames()).toEqual(['High Rate', 'High Volume'])
+
+  fireEvent.click(screen.getByRole('button', { name: 'Season totals' }))
+  expect(playerNames()).toEqual(['High Volume', 'High Rate'])
+  expect(fetchMock).toHaveBeenCalledTimes(1)
+  expect(screen.getByRole('columnheader', { name: /^PTS$/ })).toHaveAttribute(
+    'aria-sort',
+    'descending',
+  )
+
+  fireEvent.click(screen.getByRole('button', { name: 'Per game' }))
+  expect(playerNames()).toEqual(['High Rate', 'High Volume'])
+  expect(screen.getByRole('columnheader', { name: /^PTS$/ })).toHaveAttribute(
+    'aria-sort',
+    'descending',
+  )
+})
+
+test('MIN sort uses total minutes on season totals', async () => {
+  stubProjections([
+    projectionRow({
+      id: 1,
+      full_name: 'High Rate Minutes',
+      positions: ['C'],
+      nba_team: 'DEN',
+      gp: 50,
+      min: 2000,
+    }),
+    projectionRow({
+      id: 2,
+      full_name: 'High Volume Minutes',
+      positions: ['PG'],
+      nba_team: 'OKC',
+      gp: 82,
+      min: 2870,
+    }),
+  ])
+
+  renderPage(<ProjectionsPage />)
+
+  expect(await screen.findByText('High Rate Minutes')).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: /^MIN$/ }))
+  expect(playerNames()).toEqual(['High Rate Minutes', 'High Volume Minutes'])
+
+  fireEvent.click(screen.getByRole('button', { name: 'Season totals' }))
+  expect(playerNames()).toEqual(['High Volume Minutes', 'High Rate Minutes'])
+  expect(screen.getByRole('columnheader', { name: /^MIN$/ })).toHaveAttribute(
+    'aria-sort',
+    'descending',
+  )
+})
+
 test('a row with pts null shows an em dash for Total Z', async () => {
   stubProjections([
     projectionRow({

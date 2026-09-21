@@ -69,6 +69,23 @@ test('counting cat per-game is total / gp and total is the raw total', () => {
   expect(basisValue(jokic, 'pts', 'total')).toBe(2050)
 })
 
+test('counting total equals per-game times GP for a fixture row', () => {
+  const jokic = row({ pts: 2050, gp: 82 })
+  const perGamePts = basisValue(jokic, 'pts', 'per_game')
+  expect(jokic.gp).toBe(82)
+  expect(perGamePts).not.toBeNull()
+  expect(basisValue(jokic, 'pts', 'total')).toBe(perGamePts! * 82)
+})
+
+test('ratio cats are unchanged across bases', () => {
+  const jokic = row()
+  for (const cat of ['fg_pct', 'ft_pct', 'tp_pct', 'ato', 'str', 'ppm'] as const) {
+    expect(basisValue(jokic, cat, 'total')).toBeCloseTo(
+      basisValue(jokic, cat, 'per_game') ?? NaN,
+    )
+  }
+})
+
 test('null GP yields null per-game but a non-null total', () => {
   const jokic = row({ pts: 2050, gp: null })
   expect(basisValue(jokic, 'pts', 'per_game')).toBeNull()
