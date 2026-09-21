@@ -1,3 +1,4 @@
+import { useVirtualizer, type Virtualizer } from '@tanstack/react-virtual'
 import Paper from '@mui/material/Paper'
 import Table from '@mui/material/Table'
 import TableBody from '@mui/material/TableBody'
@@ -7,6 +8,7 @@ import TableHead from '@mui/material/TableHead'
 import TableRow from '@mui/material/TableRow'
 import TableSortLabel from '@mui/material/TableSortLabel'
 import Typography from '@mui/material/Typography'
+import { useRef } from 'react'
 import {
   DEFAULT_PROJECTION_SEASON,
   type Dataset,
@@ -96,6 +98,53 @@ const COLUMNS: Column[] = [
 
 const STICKY_LEFT = { player: 0, pos: 168, team: 240 } as const
 const STICKY_MIN_WIDTH = { player: 168, pos: 72, team: 64 } as const
+
+export const ROW_HEIGHT = 33
+
+// virtual-core's default rect read is offsetHeight, which is 0 without layout.
+function observeContainerRect(
+  instance: Virtualizer<HTMLDivElement, Element>,
+  onChange: (rect: { width: number; height: number }) => void,
+) {
+  const element = instance.scrollElement
+  if (!element) return
+  const targetWindow = instance.targetWindow
+  if (!targetWindow) return
+
+  const publish = (rect: { width: number; height: number }) => {
+    onChange({
+      width: Math.round(rect.width),
+      height: Math.round(rect.height),
+    })
+  }
+
+  publish(element.getBoundingClientRect())
+
+  if (typeof targetWindow.ResizeObserver !== 'function') {
+    return () => {}
+  }
+
+  const observer = new targetWindow.ResizeObserver((entries) => {
+    const apply = () => {
+      const box = entries[0]?.borderBoxSize?.[0]
+      if (box) {
+        publish({ width: box.inlineSize, height: box.blockSize })
+        return
+      }
+      publish(element.getBoundingClientRect())
+    }
+    if (instance.options.useAnimationFrameWithResizeObserver) {
+      targetWindow.requestAnimationFrame(apply)
+    } else {
+      apply()
+    }
+  })
+
+  observer.observe(element)
+  return () => {
+    observer.unobserve(element)
+  }
+}
 
 function formatStat(value: number | null, digits = 1): string {
   if (value == null) return '—'
@@ -355,13 +404,36 @@ export default function ProjectionsTable({
   basis = 'per_game',
   zScores = null,
 }: ProjectionsTableProps) {
+  const containerRef = useRef<HTMLDivElement>(null)
   const visibleColumns = COLUMNS.filter((column) => view === 'z' || !column.zOnly)
   const showDeltaCaption =
     dataset === 'projection' && view === 'values' && basis === 'per_game'
+  const virtualizer = useVirtualizer({
+    count: rows.length,
+    getScrollElement: () => containerRef.current,
+    estimateSize: () => ROW_HEIGHT,
+    overscan: 10,
+    observeElementRect: observeContainerRect,
+  })
+  const virtualItems = rows.length > 0 ? virtualizer.getVirtualItems() : []
+  const paddingTop = virtualItems[0]?.start ?? 0
+  const paddingBottom =
+    rows.length > 0
+      ? virtualizer.getTotalSize() - (virtualItems.at(-1)?.end ?? 0)
+      : 0
 
   return (
-    <TableContainer component={Paper} variant="outlined">
-      <Table size="small" aria-label={tableAriaLabel(dataset, rows, view, basis)}>
+    <TableContainer
+      component={Paper}
+      variant="outlined"
+      ref={containerRef}
+      sx={{ maxHeight: 'calc(100vh - 220px)', overflow: 'auto' }}
+    >
+      <Table
+        stickyHeader
+        size="small"
+        aria-label={tableAriaLabel(dataset, rows, view, basis)}
+      >
         <TableHead>
           <TableRow>
             {visibleColumns.map((column) => {
@@ -397,34 +469,62 @@ export default function ProjectionsTable({
               <TableCell colSpan={visibleColumns.length}>{emptyMessage}</TableCell>
             </TableRow>
           ) : (
-            rows.map((row) => (
-              <TableRow key={row.id}>
-                {visibleColumns.map((column) => {
-                  const estimated =
-                    dataset === 'projection' &&
-                    (row.estimated_stat_keys ?? []).includes(column.id)
-                  return (
-                    <TableCell
-                      key={column.id}
-                      sx={{
-                        ...cellSx(column, false),
-                        ...(estimated ? { fontStyle: 'italic' } : {}),
-                      }}
-                      title={
-                        estimated
-                          ? 'FNBA estimate (not projected by ESPN)'
-                          : undefined
-                      }
-                    >
-                      {formatCell(row, column.id, dataset, view, zScores, basis)}
-                      {showDeltaCaption
-                        ? estimatedDeltaCaption(row, column.id)
-                        : null}
-                    </TableCell>
-                  )
-                })}
-              </TableRow>
-            ))
+            <>
+              {paddingTop > 0 ? (
+                <TableRow aria-hidden style={{ height: paddingTop }}>
+                  <TableCell
+                    colSpan={visibleColumns.length}
+                    sx={{ p: 0, border: 0 }}
+                  />
+                </TableRow>
+              ) : null}
+              {virtualItems.map((virtualRow) => {
+                const row = rows[virtualRow.index]
+                return (
+                  <TableRow key={row.id}>
+                    {visibleColumns.map((column) => {
+                      const estimated =
+                        dataset === 'projection' &&
+                        (row.estimated_stat_keys ?? []).includes(column.id)
+                      return (
+                        <TableCell
+                          key={column.id}
+                          sx={{
+                            ...cellSx(column, false),
+                            ...(estimated ? { fontStyle: 'italic' } : {}),
+                          }}
+                          title={
+                            estimated
+                              ? 'FNBA estimate (not projected by ESPN)'
+                              : undefined
+                          }
+                        >
+                          {formatCell(
+                            row,
+                            column.id,
+                            dataset,
+                            view,
+                            zScores,
+                            basis,
+                          )}
+                          {showDeltaCaption
+                            ? estimatedDeltaCaption(row, column.id)
+                            : null}
+                        </TableCell>
+                      )
+                    })}
+                  </TableRow>
+                )
+              })}
+              {paddingBottom > 0 ? (
+                <TableRow aria-hidden style={{ height: paddingBottom }}>
+                  <TableCell
+                    colSpan={visibleColumns.length}
+                    sx={{ p: 0, border: 0 }}
+                  />
+                </TableRow>
+              ) : null}
+            </>
           )}
         </TableBody>
       </Table>

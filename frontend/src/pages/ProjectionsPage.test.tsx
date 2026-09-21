@@ -1,7 +1,7 @@
 import '@testing-library/jest-dom/vitest'
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { ThemeProvider } from '@mui/material/styles'
-import { afterEach, expect, test, vi } from 'vitest'
+import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import type { ReactElement } from 'react'
 import type { Projection } from '../api/projections.ts'
 import theme from '../theme.ts'
@@ -116,7 +116,28 @@ function playerNames() {
     .map((row) => within(row).getAllByRole('cell')[0]?.textContent)
 }
 
+const originalGetBoundingClientRect = Element.prototype.getBoundingClientRect
+
+function viewportRect() {
+  return {
+    width: 1200,
+    height: 2000,
+    top: 0,
+    left: 0,
+    right: 1200,
+    bottom: 2000,
+    x: 0,
+    y: 0,
+    toJSON() {},
+  }
+}
+
+beforeEach(() => {
+  Element.prototype.getBoundingClientRect = () => viewportRect()
+})
+
 afterEach(() => {
+  Element.prototype.getBoundingClientRect = originalGetBoundingClientRect
   cleanup()
   vi.unstubAllGlobals()
   vi.restoreAllMocks()

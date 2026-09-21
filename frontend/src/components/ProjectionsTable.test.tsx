@@ -1,13 +1,13 @@
 import '@testing-library/jest-dom/vitest'
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { ThemeProvider } from '@mui/material/styles'
-import { afterEach, expect, test, vi } from 'vitest'
+import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import type { ReactElement } from 'react'
 import type { Projection } from '../api/projections.ts'
 import { SCORED_CAT_IDS, type ScoredCat } from '../lib/statBasis.ts'
 import type { ZScoresResult } from '../lib/zScores.ts'
 import theme from '../theme.ts'
-import ProjectionsTable from './ProjectionsTable.tsx'
+import ProjectionsTable, { ROW_HEIGHT } from './ProjectionsTable.tsx'
 
 function renderTable(ui: ReactElement) {
   return render(<ThemeProvider theme={theme}>{ui}</ThemeProvider>)
@@ -30,7 +30,28 @@ function cellText(playerName: string, header: string) {
   return cells[index]
 }
 
+const originalGetBoundingClientRect = Element.prototype.getBoundingClientRect
+
+function viewportRect() {
+  return {
+    width: 1200,
+    height: 2000,
+    top: 0,
+    left: 0,
+    right: 1200,
+    bottom: 2000,
+    x: 0,
+    y: 0,
+    toJSON() {},
+  }
+}
+
+beforeEach(() => {
+  Element.prototype.getBoundingClientRect = () => viewportRect()
+})
+
 afterEach(() => {
+  Element.prototype.getBoundingClientRect = originalGetBoundingClientRect
   cleanup()
 })
 
@@ -765,4 +786,100 @@ test('totals basis aria-label gains a season totals suffix', () => {
       name: 'Player projections 2026-27, season totals',
     }),
   ).toBeInTheDocument()
+})
+
+function projectionCopy(id: number): Projection {
+  return {
+    ...jokic,
+    id,
+    player_id: id,
+    full_name: `Player ${id}`,
+  }
+}
+
+function injectedRuleText(element: Element): string {
+  const styles = [...document.querySelectorAll('style')]
+    .map((node) => node.textContent ?? '')
+    .join('\n')
+  const chunks: string[] = []
+  for (const className of element.classList) {
+    const needle = `.${className}`
+    let from = 0
+    while (from < styles.length) {
+      const at = styles.indexOf(needle, from)
+      if (at === -1) break
+      const open = styles.indexOf('{', at)
+      const close = open === -1 ? -1 : styles.indexOf('}', open)
+      if (open === -1 || close === -1) break
+      chunks.push(styles.slice(at, close + 1))
+      from = close + 1
+    }
+  }
+  return chunks.join('\n')
+}
+
+test('mounts only the viewport window for 300 rows', () => {
+  const rows = Array.from({ length: 300 }, (_, index) => projectionCopy(index + 1))
+
+  renderTable(
+    <ProjectionsTable
+      rows={rows}
+      sortBy={null}
+      sortDirection="desc"
+      onSort={() => {}}
+      emptyMessage="No projections yet. Use Update from source."
+    />,
+  )
+
+  const bodyRows = screen.getByRole('table').querySelectorAll('tbody tr')
+  expect(bodyRows.length).toBeLessThan(300)
+  expect(screen.getByText('Player 1')).toBeInTheDocument()
+  expect(screen.queryByText('Player 300')).not.toBeInTheDocument()
+
+  const dataRows = [...bodyRows].filter(
+    (row) => row.getAttribute('aria-hidden') !== 'true',
+  )
+  const spacerHeight = [...bodyRows]
+    .filter((row) => row.getAttribute('aria-hidden') === 'true')
+    .reduce(
+      (sum, row) => sum + Number.parseFloat((row as HTMLElement).style.height || '0'),
+      0,
+    )
+  expect(spacerHeight + dataRows.length * ROW_HEIGHT).toBe(300 * ROW_HEIGHT)
+})
+
+test('keeps a bounded scroll container and a sticky header', () => {
+  renderTable(
+    <ProjectionsTable
+      rows={[jokic]}
+      sortBy={null}
+      sortDirection="desc"
+      onSort={() => {}}
+      emptyMessage="No projections yet. Use Update from source."
+    />,
+  )
+
+  const container = screen
+    .getByRole('table')
+    .closest('[class*="MuiTableContainer"]')
+  expect(container).not.toBeNull()
+  const element = container as HTMLElement
+  const computed = getComputedStyle(element)
+  const overflowIsAuto = computed.overflow === 'auto'
+  const maxHeightIsBounded =
+    computed.maxHeight !== '' &&
+    computed.maxHeight !== 'none' &&
+    computed.maxHeight !== '0px'
+  if (!overflowIsAuto || !maxHeightIsBounded) {
+    const css = injectedRuleText(element)
+    expect(css).toMatch(/overflow:\s*auto/)
+    expect(css).toMatch(/max-height:\s*(?!none\b)\S+/)
+  }
+
+  expect(screen.getAllByRole('columnheader').length).toBeGreaterThan(0)
+  expect(
+    screen
+      .getAllByRole('columnheader')
+      .some((cell) => cell.classList.contains('MuiTableCell-stickyHeader')),
+  ).toBe(true)
 })
