@@ -427,7 +427,8 @@ export default function ProjectionsTable({
       component={Paper}
       variant="outlined"
       ref={containerRef}
-      sx={{ maxHeight: 'calc(100vh - 220px)', overflow: 'auto' }}
+      // 346px is the measured chrome: title, toolbar, import line, both captions, page padding.
+      sx={{ maxHeight: 'calc(100vh - 346px)', overflow: 'auto' }}
     >
       <Table
         stickyHeader
