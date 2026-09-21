@@ -12,6 +12,14 @@ import {
   type Dataset,
   type Projection,
 } from '../api/projections.ts'
+import {
+  isScoredCat,
+  perGame,
+  toNumber,
+  type Basis,
+} from '../lib/statBasis.ts'
+import type { ZScoresResult } from '../lib/zScores.ts'
+import type { StatView } from './ProjectionsToolbar.tsx'
 
 export type SortDirection = 'asc' | 'desc'
 
@@ -41,13 +49,16 @@ export type SortColumn =
   | 'td'
   | 'pts'
   | 'ppm'
+  | 'z_total'
 
 type Column = {
   id: string
   label: string
+  zLabel?: string
   sortColumn?: SortColumn
   sticky?: 'player' | 'pos' | 'team'
   numeric?: boolean
+  zOnly?: boolean
 }
 
 const COLUMNS: Column[] = [
@@ -56,13 +67,14 @@ const COLUMNS: Column[] = [
   { id: 'team', label: 'Team', sortColumn: 'team', sticky: 'team' },
   { id: 'inj', label: 'Inj' },
   { id: 'rank', label: 'Rank', sortColumn: 'rank', numeric: true },
+  { id: 'z_total', label: 'Total Z', sortColumn: 'z_total', numeric: true, zOnly: true },
   { id: 'gp', label: 'GP', sortColumn: 'gp', numeric: true },
   { id: 'min', label: 'MIN', sortColumn: 'min', numeric: true },
-  { id: 'fgm', label: 'FGM/FGA', sortColumn: 'fgm', numeric: true },
+  { id: 'fgm', label: 'FGM/FGA', zLabel: 'FGM', sortColumn: 'fgm', numeric: true },
   { id: 'fg_pct', label: 'FG%', sortColumn: 'fg_pct', numeric: true },
-  { id: 'ftm', label: 'FTM/FTA', sortColumn: 'ftm', numeric: true },
+  { id: 'ftm', label: 'FTM/FTA', zLabel: 'FTM', sortColumn: 'ftm', numeric: true },
   { id: 'ft_pct', label: 'FT%', sortColumn: 'ft_pct', numeric: true },
-  { id: 'tpm', label: '3PM/3PA', sortColumn: 'tpm', numeric: true },
+  { id: 'tpm', label: '3PM/3PA', zLabel: '3PM', sortColumn: 'tpm', numeric: true },
   { id: 'tp_pct', label: '3P%', sortColumn: 'tp_pct', numeric: true },
   { id: 'oreb', label: 'OREB', sortColumn: 'oreb', numeric: true },
   { id: 'dreb', label: 'DREB', sortColumn: 'dreb', numeric: true },
@@ -82,25 +94,20 @@ const COLUMNS: Column[] = [
 const STICKY_LEFT = { player: 0, pos: 168, team: 240 } as const
 const STICKY_MIN_WIDTH = { player: 168, pos: 72, team: 64 } as const
 
-function toNumber(value: number | string | null | undefined): number | null {
-  if (value == null || value === '') return null
-  const parsed = typeof value === 'number' ? value : Number(value)
-  return Number.isFinite(parsed) ? parsed : null
-}
-
-function perGame(
-  total: number | string | null | undefined,
-  gp: number | string | null | undefined,
-): number | null {
-  const value = toNumber(total)
-  const games = toNumber(gp)
-  if (value == null || games == null || games === 0) return null
-  return value / games
-}
-
 function formatStat(value: number | null, digits = 1): string {
   if (value == null) return '—'
   return value.toFixed(digits)
+}
+
+function formatZ(value: number | null): string {
+  if (value == null) return '—'
+  const formatted = value.toFixed(2)
+  return value >= 0 ? `+${formatted}` : formatted
+}
+
+function columnLabel(column: Column, view: StatView): string {
+  if (view === 'z' && column.zLabel) return column.zLabel
+  return column.label
 }
 
 function formatMadeAttempted(
@@ -212,23 +219,37 @@ function estimatedDeltaCaption(row: Projection, columnId: string) {
   )
 }
 
-function tableAriaLabel(dataset: Dataset, rows: Projection[]): string {
+function tableAriaLabel(
+  dataset: Dataset,
+  rows: Projection[],
+  view: StatView,
+): string {
   const season =
     rows[0]?.season ??
     (dataset === 'actual'
       ? DEFAULT_PROJECTION_SEASON - 1
       : DEFAULT_PROJECTION_SEASON)
   const range = priorSeasonLabel(season)
-  return dataset === 'actual'
-    ? `Player actuals ${range}`
-    : `Player projections ${range}`
+  const base =
+    dataset === 'actual'
+      ? `Player actuals ${range}`
+      : `Player projections ${range}`
+  return view === 'z' ? `${base}, z-scores` : base
 }
 
 function formatCell(
   row: Projection,
   columnId: string,
   dataset: Dataset,
+  view: StatView,
+  zScores: ZScoresResult | null,
 ): string {
+  if (view === 'z' && columnId === 'z_total') {
+    return formatZ(zScores?.scores.get(row.id)?.total ?? null)
+  }
+  if (view === 'z' && isScoredCat(columnId)) {
+    return formatZ(zScores?.scores.get(row.id)?.cats[columnId] ?? null)
+  }
   const gp = toNumber(row.gp)
   switch (columnId) {
     case 'player':
@@ -296,6 +317,9 @@ type ProjectionsTableProps = {
   onSort: (column: SortColumn) => void
   emptyMessage: string
   dataset?: Dataset
+  view?: StatView
+  basis?: Basis
+  zScores?: ZScoresResult | null
 }
 
 export default function ProjectionsTable({
@@ -305,14 +329,19 @@ export default function ProjectionsTable({
   onSort,
   emptyMessage,
   dataset = 'projection',
+  view = 'values',
+  zScores = null,
 }: ProjectionsTableProps) {
+  const visibleColumns = COLUMNS.filter((column) => view === 'z' || !column.zOnly)
+
   return (
     <TableContainer component={Paper} variant="outlined">
-      <Table size="small" aria-label={tableAriaLabel(dataset, rows)}>
+      <Table size="small" aria-label={tableAriaLabel(dataset, rows, view)}>
         <TableHead>
           <TableRow>
-            {COLUMNS.map((column) => {
+            {visibleColumns.map((column) => {
               const active = column.sortColumn != null && sortBy === column.sortColumn
+              const label = columnLabel(column, view)
               return (
                 <TableCell
                   key={column.id}
@@ -327,10 +356,10 @@ export default function ProjectionsTable({
                         if (column.sortColumn) onSort(column.sortColumn)
                       }}
                     >
-                      {column.label}
+                      {label}
                     </TableSortLabel>
                   ) : (
-                    column.label
+                    label
                   )}
                 </TableCell>
               )
@@ -340,12 +369,12 @@ export default function ProjectionsTable({
         <TableBody>
           {rows.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={COLUMNS.length}>{emptyMessage}</TableCell>
+              <TableCell colSpan={visibleColumns.length}>{emptyMessage}</TableCell>
             </TableRow>
           ) : (
             rows.map((row) => (
               <TableRow key={row.id}>
-                {COLUMNS.map((column) => {
+                {visibleColumns.map((column) => {
                   const estimated =
                     dataset === 'projection' &&
                     (row.estimated_stat_keys ?? []).includes(column.id)
@@ -362,8 +391,8 @@ export default function ProjectionsTable({
                           : undefined
                       }
                     >
-                      {formatCell(row, column.id, dataset)}
-                      {dataset === 'projection'
+                      {formatCell(row, column.id, dataset, view, zScores)}
+                      {dataset === 'projection' && view !== 'z'
                         ? estimatedDeltaCaption(row, column.id)
                         : null}
                     </TableCell>

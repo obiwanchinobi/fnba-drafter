@@ -24,6 +24,8 @@ const idleHandlers = {
   onPositionChange: () => {},
   teams: [] as string[],
   onTeamsChange: () => {},
+  view: 'values' as const,
+  onViewChange: () => {},
 }
 
 test('renders a Source select that includes ESPN', () => {
@@ -188,4 +190,34 @@ test('NBA team options include extra abbrevs from loaded rows', () => {
   fireEvent.mouseDown(screen.getByRole('combobox', { name: /nba team/i }))
   expect(screen.getByRole('option', { name: 'XYZ' })).toBeInTheDocument()
   expect(screen.getAllByRole('option')).toHaveLength(32)
+})
+
+test('renders Values and Z-scores view buttons', () => {
+  renderToolbar(<ProjectionsToolbar source="espn" {...idleHandlers} />)
+
+  const group = screen.getByRole('group', { name: 'View' })
+  expect(group).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Values' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  )
+  expect(screen.getByRole('button', { name: 'Z-scores' })).toHaveAttribute(
+    'aria-pressed',
+    'false',
+  )
+})
+
+test('clicking Z-scores calls onViewChange with z', () => {
+  const onViewChange = vi.fn()
+
+  renderToolbar(
+    <ProjectionsToolbar
+      source="espn"
+      {...idleHandlers}
+      onViewChange={onViewChange}
+    />,
+  )
+
+  fireEvent.click(screen.getByRole('button', { name: 'Z-scores' }))
+  expect(onViewChange).toHaveBeenCalledWith('z')
 })

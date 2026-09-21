@@ -44,6 +44,16 @@ Categories marked `*` are inverse in typical rotisserie (lower is better).
 
 Not in scoring (do not optimize for these unless they are an input to a scored category): GP, GS, MIN, FGA, FGMI, AFG%, FTA, FTMI, 3PA, 3PMI, REB (total — OREB and DREB are scored separately), EJ, FF, TF, DQ, QD, TW.
 
+## League settings (2026-27)
+
+Facts from ESPN `mSettings` (logged-in Chrome session, read-only, fetched 2026-09-21). Identical for 2026-27 and 2025-26.
+
+- 8 teams, scoring type ROTO, one matchup period (full season)
+- 19 scoring items; reverse items are PF and TO
+- Roster: PG 1, SG 1, SF 1, PF 1, C 1, G 1, F/C 1, UTIL 4 (10 starters), Bench 6, IR 1
+- Rostered pool = 8 × 16 = 128 (IR excluded)
+- Draft: snake, 90 s per pick, `date` = 1790424000000 ms = Sat 26 Sep 2026 22:00 AEST
+
 ## Lessons from prior drafts
 
 These are product constraints, not anecdotes. Final rotisserie standings for this league (2021–2026): [`historical-winners.md`](historical-winners.md).

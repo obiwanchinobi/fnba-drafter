@@ -601,3 +601,208 @@ test('switching to actuals fetches season stats and labels the dataset', async (
     screen.getByRole('table', { name: 'Player actuals 2025-26' }),
   ).toBeInTheDocument()
 })
+
+test('toggling to z-scores then clicking TO puts the fewest-turnover player first', async () => {
+  stubProjections([
+    projectionRow({
+      id: 1,
+      full_name: 'High TO',
+      positions: ['C'],
+      nba_team: 'DEN',
+      to: 300,
+    }),
+    projectionRow({
+      id: 2,
+      full_name: 'Mid TO',
+      positions: ['PG'],
+      nba_team: 'OKC',
+      to: 200,
+    }),
+    projectionRow({
+      id: 3,
+      full_name: 'Low TO',
+      positions: ['SF'],
+      nba_team: 'BOS',
+      to: 100,
+    }),
+  ])
+
+  renderPage(<ProjectionsPage />)
+
+  expect(await screen.findByText('High TO')).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Z-scores' }))
+  fireEvent.click(screen.getByRole('button', { name: /^TO$/ }))
+
+  expect(playerNames()).toEqual(['Low TO', 'Mid TO', 'High TO'])
+})
+
+test('clicking Total Z orders by the composite', async () => {
+  stubProjections([
+    projectionRow({
+      id: 1,
+      full_name: 'Low BLK',
+      positions: ['C'],
+      nba_team: 'DEN',
+      blk: 10,
+    }),
+    projectionRow({
+      id: 2,
+      full_name: 'High BLK',
+      positions: ['PG'],
+      nba_team: 'OKC',
+      blk: 80,
+    }),
+    projectionRow({
+      id: 3,
+      full_name: 'Mid BLK',
+      positions: ['SF'],
+      nba_team: 'BOS',
+      blk: 40,
+    }),
+  ])
+
+  renderPage(<ProjectionsPage />)
+
+  expect(await screen.findByText('Low BLK')).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Z-scores' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Total Z' }))
+
+  expect(playerNames()).toEqual(['High BLK', 'Mid BLK', 'Low BLK'])
+})
+
+test('toggling view keeps the active sort column', async () => {
+  stubProjections([
+    projectionRow({
+      id: 1,
+      full_name: 'Nikola Jokic',
+      positions: ['C'],
+      nba_team: 'DEN',
+      pts: 2050,
+    }),
+    projectionRow({
+      id: 2,
+      full_name: 'Shai Gilgeous-Alexander',
+      positions: ['PG'],
+      nba_team: 'OKC',
+      pts: 2500,
+    }),
+    projectionRow({
+      id: 3,
+      full_name: 'Jayson Tatum',
+      positions: ['SF', 'PF'],
+      nba_team: 'BOS',
+      pts: 1500,
+    }),
+  ])
+
+  renderPage(<ProjectionsPage />)
+
+  expect(await screen.findByText('Nikola Jokic')).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: /^PTS$/ }))
+  expect(playerNames()).toEqual([
+    'Shai Gilgeous-Alexander',
+    'Nikola Jokic',
+    'Jayson Tatum',
+  ])
+
+  fireEvent.click(screen.getByRole('button', { name: 'Z-scores' }))
+  expect(playerNames()).toEqual([
+    'Shai Gilgeous-Alexander',
+    'Nikola Jokic',
+    'Jayson Tatum',
+  ])
+  expect(screen.getByRole('columnheader', { name: /^PTS$/ })).toHaveAttribute(
+    'aria-sort',
+    'descending',
+  )
+
+  fireEvent.click(screen.getByRole('button', { name: 'Values' }))
+  expect(playerNames()).toEqual([
+    'Shai Gilgeous-Alexander',
+    'Nikola Jokic',
+    'Jayson Tatum',
+  ])
+})
+
+test('search filtering does not change a player displayed z', async () => {
+  stubProjections([
+    projectionRow({
+      id: 1,
+      full_name: 'Star Player',
+      positions: ['C'],
+      nba_team: 'DEN',
+      pts: 3000,
+    }),
+    projectionRow({
+      id: 2,
+      full_name: 'Scrub Player',
+      positions: ['SF'],
+      nba_team: 'BOS',
+      pts: 1000,
+    }),
+  ])
+
+  renderPage(<ProjectionsPage />)
+
+  expect(await screen.findByText('Star Player')).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Z-scores' }))
+
+  const headers = screen
+    .getAllByRole('columnheader')
+    .map((header) => header.textContent)
+  const ptsIndex = headers.indexOf('PTS')
+  const scrubBefore = screen.getByText('Scrub Player').closest('tr')
+  expect(scrubBefore).not.toBeNull()
+  expect(
+    within(scrubBefore as HTMLTableRowElement).getAllByRole('cell')[ptsIndex],
+  ).toHaveTextContent('-1.00')
+
+  fireEvent.change(screen.getByLabelText(/player name/i), {
+    target: { value: 'scrub' },
+  })
+
+  expect(playerNames()).toEqual(['Scrub Player'])
+  const scrubAfter = screen.getByText('Scrub Player').closest('tr')
+  expect(scrubAfter).not.toBeNull()
+  expect(
+    within(scrubAfter as HTMLTableRowElement).getAllByRole('cell')[ptsIndex],
+  ).toHaveTextContent('-1.00')
+})
+
+test('a row with pts null shows an em dash for Total Z', async () => {
+  stubProjections([
+    projectionRow({
+      id: 1,
+      full_name: 'Complete Player',
+      positions: ['C'],
+      nba_team: 'DEN',
+    }),
+    projectionRow({
+      id: 2,
+      full_name: 'Missing Points',
+      positions: ['SF'],
+      nba_team: 'BOS',
+      pts: null,
+    }),
+  ])
+
+  renderPage(<ProjectionsPage />)
+
+  expect(await screen.findByText('Missing Points')).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Z-scores' }))
+
+  const row = screen.getByText('Missing Points').closest('tr')
+  expect(row).not.toBeNull()
+  const cells = within(row as HTMLTableRowElement).getAllByRole('cell')
+  const headers = screen
+    .getAllByRole('columnheader')
+    .map((header) => header.textContent)
+  const totalIndex = headers.indexOf('Total Z')
+  expect(totalIndex).toBeGreaterThan(-1)
+  expect(cells[totalIndex]).toHaveTextContent('—')
+  expect(
+    screen.getByText(
+      'Z-scores vs the top 1 rostered players (8 teams × 16 roster spots, ≥ 20 GP). TO and PF are reversed so positive is better.',
+    ),
+  ).toBeInTheDocument()
+})

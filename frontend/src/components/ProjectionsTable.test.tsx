@@ -4,6 +4,8 @@ import { ThemeProvider } from '@mui/material/styles'
 import { afterEach, expect, test, vi } from 'vitest'
 import type { ReactElement } from 'react'
 import type { Projection } from '../api/projections.ts'
+import { SCORED_CAT_IDS, type ScoredCat } from '../lib/statBasis.ts'
+import type { ZScoresResult } from '../lib/zScores.ts'
 import theme from '../theme.ts'
 import ProjectionsTable from './ProjectionsTable.tsx'
 
@@ -58,6 +60,27 @@ const jokic: Projection = {
   dataset: 'projection',
   prior_season: null,
 }
+
+function zScoresFor(
+  rowId: number,
+  cats: Partial<Record<ScoredCat, number | null>>,
+  total: number | null,
+): ZScoresResult {
+  const full = {} as Record<ScoredCat, number | null>
+  for (const cat of SCORED_CAT_IDS) {
+    full[cat] = cats[cat] === undefined ? 0 : cats[cat]
+  }
+  return {
+    poolSize: 1,
+    scores: new Map([[rowId, { cats: full, total }]]),
+  }
+}
+
+const zViewScores = zScoresFor(
+  1,
+  { pts: 1.23, to: -0.45, oreb: null },
+  1.23,
+)
 
 test('shows empty-state copy when there are no rows', () => {
   renderTable(
@@ -396,4 +419,185 @@ test('ESPN-supplied cats never show a delta', () => {
   expect(
     within(cells[astIndex]).queryByTitle('vs 2025-26 actual per game'),
   ).toBeNull()
+})
+
+test('z cells render signed two-decimal z and an em dash for null', () => {
+  renderTable(
+    <ProjectionsTable
+      rows={[jokic]}
+      sortBy={null}
+      sortDirection="desc"
+      onSort={() => {}}
+      emptyMessage="No projections yet. Use Update from source."
+      view="z"
+      zScores={zViewScores}
+    />,
+  )
+
+  const row = screen.getByText('Nikola Jokic').closest('tr')
+  expect(row).not.toBeNull()
+  const cells = within(row as HTMLTableRowElement).getAllByRole('cell')
+  const headers = screen
+    .getAllByRole('columnheader')
+    .map((header) => header.textContent)
+  const ptsIndex = headers.indexOf('PTS')
+  const toIndex = headers.indexOf('TO')
+  const orebIndex = headers.indexOf('OREB')
+  expect(cells[ptsIndex]).toHaveTextContent('+1.23')
+  expect(cells[toIndex]).toHaveTextContent('-0.45')
+  expect(cells[orebIndex]).toHaveTextContent('—')
+})
+
+test('Total Z header is absent in values view and present and sortable in z view', () => {
+  const onSort = vi.fn()
+
+  const { rerender } = renderTable(
+    <ProjectionsTable
+      rows={[jokic]}
+      sortBy={null}
+      sortDirection="desc"
+      onSort={onSort}
+      emptyMessage="No projections yet. Use Update from source."
+      view="values"
+    />,
+  )
+
+  expect(
+    screen.queryByRole('button', { name: 'Total Z' }),
+  ).not.toBeInTheDocument()
+
+  rerender(
+    <ThemeProvider theme={theme}>
+      <ProjectionsTable
+        rows={[jokic]}
+        sortBy={null}
+        sortDirection="desc"
+        onSort={onSort}
+        emptyMessage="No projections yet. Use Update from source."
+        view="z"
+        zScores={zViewScores}
+      />
+    </ThemeProvider>,
+  )
+
+  const headers = screen
+    .getAllByRole('columnheader')
+    .map((header) => header.textContent)
+  expect(headers.indexOf('Total Z')).toBe(headers.indexOf('Rank') + 1)
+  fireEvent.click(screen.getByRole('button', { name: 'Total Z' }))
+  expect(onSort).toHaveBeenCalledWith('z_total')
+})
+
+test('FGM header label switches from FGM/FGA in z view', () => {
+  const { rerender } = renderTable(
+    <ProjectionsTable
+      rows={[jokic]}
+      sortBy={null}
+      sortDirection="desc"
+      onSort={() => {}}
+      emptyMessage="No projections yet. Use Update from source."
+    />,
+  )
+
+  expect(screen.getByRole('button', { name: 'FGM/FGA' })).toBeInTheDocument()
+
+  rerender(
+    <ThemeProvider theme={theme}>
+      <ProjectionsTable
+        rows={[jokic]}
+        sortBy={null}
+        sortDirection="desc"
+        onSort={() => {}}
+        emptyMessage="No projections yet. Use Update from source."
+        view="z"
+        zScores={zViewScores}
+      />
+    </ThemeProvider>,
+  )
+
+  expect(screen.getByRole('button', { name: /^FGM$/ })).toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'FGM/FGA' })).not.toBeInTheDocument()
+  expect(screen.getByRole('button', { name: /^FTM$/ })).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: /^3PM$/ })).toBeInTheDocument()
+})
+
+test('delta caption is absent in z view', () => {
+  const estimated = {
+    ...jokic,
+    gp: 72,
+    oreb: 213,
+    missing_stat_keys: ['dreb', 'pf', 'dd', 'td'],
+    estimated_stat_keys: ['oreb'],
+    prior_season: priorSeason,
+  }
+
+  renderTable(
+    <ProjectionsTable
+      rows={[estimated]}
+      sortBy={null}
+      sortDirection="desc"
+      onSort={() => {}}
+      emptyMessage="No projections yet. Use Update from source."
+      view="z"
+      zScores={zViewScores}
+    />,
+  )
+
+  const row = screen.getByText('Nikola Jokic').closest('tr')
+  expect(row).not.toBeNull()
+  const cells = within(row as HTMLTableRowElement).getAllByRole('cell')
+  const headers = screen
+    .getAllByRole('columnheader')
+    .map((header) => header.textContent)
+  const orebIndex = headers.indexOf('OREB')
+  expect(
+    within(cells[orebIndex]).queryByTitle('vs 2025-26 actual per game'),
+  ).toBeNull()
+  expect(cells[orebIndex]).toHaveStyle({ fontStyle: 'italic' })
+  expect(cells[orebIndex]).toHaveAttribute(
+    'title',
+    'FNBA estimate (not projected by ESPN)',
+  )
+})
+
+test('GP still renders its raw value in z view', () => {
+  renderTable(
+    <ProjectionsTable
+      rows={[jokic]}
+      sortBy={null}
+      sortDirection="desc"
+      onSort={() => {}}
+      emptyMessage="No projections yet. Use Update from source."
+      view="z"
+      zScores={zViewScores}
+    />,
+  )
+
+  const row = screen.getByText('Nikola Jokic').closest('tr')
+  expect(row).not.toBeNull()
+  const cells = within(row as HTMLTableRowElement).getAllByRole('cell')
+  const headers = screen
+    .getAllByRole('columnheader')
+    .map((header) => header.textContent)
+  const gpIndex = headers.indexOf('GP')
+  expect(cells[gpIndex]).toHaveTextContent('82')
+})
+
+test('z view aria-label gains a z-scores suffix', () => {
+  renderTable(
+    <ProjectionsTable
+      dataset="projection"
+      rows={[jokic]}
+      sortBy={null}
+      sortDirection="desc"
+      onSort={() => {}}
+      emptyMessage="No projections yet. Use Update from source."
+      view="z"
+      zScores={zViewScores}
+    />,
+  )
+
+  expect(
+    screen.getByRole('table', { name: 'Player projections 2026-27, z-scores' }),
+  ).toBeInTheDocument()
 })

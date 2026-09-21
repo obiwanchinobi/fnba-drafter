@@ -29,6 +29,8 @@ export const POSITION_FILTERS = [
 
 export type PositionFilter = (typeof POSITION_FILTERS)[number]
 
+export type StatView = 'values' | 'z'
+
 export const ESPN_NBA_TEAMS = [
   'ATL',
   'BOS',
@@ -85,6 +87,8 @@ type ProjectionsToolbarProps = {
   extraTeams?: string[]
   onUpdateFromSource?: () => void
   updating?: boolean
+  view?: StatView
+  onViewChange?: (view: StatView) => void
 }
 
 export default function ProjectionsToolbar({
@@ -101,6 +105,8 @@ export default function ProjectionsToolbar({
   extraTeams = [],
   onUpdateFromSource,
   updating = false,
+  view = 'values',
+  onViewChange,
 }: ProjectionsToolbarProps) {
   const sourceLabel = SOURCE_LABELS[source] ?? source
   const teamOptions = nbaTeamOptions(extraTeams)
@@ -167,6 +173,18 @@ export default function ProjectionsToolbar({
             {chip}
           </ToggleButton>
         ))}
+      </ToggleButtonGroup>
+      <ToggleButtonGroup
+        exclusive
+        size="small"
+        value={view}
+        onChange={(_event, value: StatView | null) => {
+          if (value != null) onViewChange?.(value)
+        }}
+        aria-label="View"
+      >
+        <ToggleButton value="values">Values</ToggleButton>
+        <ToggleButton value="z">Z-scores</ToggleButton>
       </ToggleButtonGroup>
       <FormControl size="small" sx={{ minWidth: 160 }}>
         <InputLabel id="projections-team-label" shrink>
