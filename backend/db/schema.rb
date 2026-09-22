@@ -10,9 +10,48 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_20_120001) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_22_143000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
+
+  create_table "mock_draft_picks", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.bigint "mock_draft_run_id", null: false
+    t.integer "overall_pick", null: false
+    t.bigint "player_id", null: false
+    t.string "roster_slot", null: false
+    t.integer "round", null: false
+    t.integer "slot", null: false
+    t.string "team", null: false
+    t.datetime "updated_at", null: false
+    t.decimal "z_total", null: false
+    t.index ["mock_draft_run_id", "overall_pick"], name: "index_mock_draft_picks_on_mock_draft_run_id_and_overall_pick", unique: true
+    t.index ["mock_draft_run_id", "team"], name: "index_mock_draft_picks_on_mock_draft_run_id_and_team"
+    t.index ["mock_draft_run_id"], name: "index_mock_draft_picks_on_mock_draft_run_id"
+    t.index ["player_id"], name: "index_mock_draft_picks_on_player_id"
+  end
+
+  create_table "mock_draft_runs", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.text "draft_order", null: false, array: true
+    t.bigint "mock_draft_id", null: false
+    t.jsonb "standings", null: false
+    t.datetime "updated_at", null: false
+    t.integer "user_slot", null: false
+    t.index ["mock_draft_id", "user_slot"], name: "index_mock_draft_runs_on_mock_draft_id_and_user_slot", unique: true
+    t.index ["mock_draft_id"], name: "index_mock_draft_runs_on_mock_draft_id"
+  end
+
+  create_table "mock_drafts", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.string "policy", null: false
+    t.integer "pool_size", null: false
+    t.datetime "projection_imported_at", null: false
+    t.integer "season", null: false
+    t.string "source", null: false
+    t.datetime "updated_at", null: false
+    t.string "user_team", null: false
+  end
 
   create_table "player_projections", force: :cascade do |t|
     t.decimal "ast"
@@ -92,6 +131,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_20_120001) do
     t.index ["espn_player_id"], name: "index_players_on_espn_player_id", unique: true, where: "(espn_player_id IS NOT NULL)"
   end
 
+  add_foreign_key "mock_draft_picks", "mock_draft_runs"
+  add_foreign_key "mock_draft_picks", "players"
+  add_foreign_key "mock_draft_runs", "mock_drafts"
   add_foreign_key "player_projections", "players"
   add_foreign_key "player_season_stats", "players"
 end
