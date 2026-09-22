@@ -27,7 +27,7 @@ class MockDraft < ApplicationRecord
         pool_size: League::POOL_SIZE,
         user_team: League::USER_TEAM
       )
-      persist_runs!(draft, board)
+      persist_runs!(draft, board, projections)
       draft
     end
   end
@@ -82,15 +82,24 @@ class MockDraft < ApplicationRecord
   end
   private_class_method :entry_sort_key
 
-  def self.persist_runs!(draft, board)
+  def self.persist_runs!(draft, board, projections)
+    by_player_id = projections.index_by(&:player_id)
     1.upto(League::TEAM_COUNT) do |user_slot|
       order = draft_order_for(user_slot)
       picks = SnakeDraft.new(order: order, board: duplicate_board(board), rounds: League::ROUNDS).picks
-      run = draft.runs.create!(user_slot: user_slot, draft_order: order, standings: [])
+      standings = RotoStandings.new(rosters_for(picks, by_player_id)).table
+      run = draft.runs.create!(user_slot: user_slot, draft_order: order, standings: standings)
       insert_picks!(run, picks)
     end
   end
   private_class_method :persist_runs!
+
+  def self.rosters_for(picks, by_player_id)
+    picks.group_by { |pick| pick[:team] }.transform_values do |team_picks|
+      team_picks.map { |pick| by_player_id.fetch(pick[:player_id]) }
+    end
+  end
+  private_class_method :rosters_for
 
   # Team Chino sits at this 1-based slot. The other teams keep TEAMS' circular order.
   def self.draft_order_for(user_slot)

@@ -92,6 +92,29 @@ class SnakeDraftTest < ActiveSupport::TestCase
     assert_equal 128, picks[127][:overall_pick]
   end
 
+  test "late round with only a center slot open skips a better guard" do
+    fillers = [
+      { player_id: 1, positions: [ "PG" ], value: 100 },
+      { player_id: 2, positions: [ "SG" ], value: 99 },
+      { player_id: 3, positions: [ "SF" ], value: 98 },
+      { player_id: 4, positions: [ "PF" ], value: 97 },
+      { player_id: 5, positions: [ "PG" ], value: 96 },
+      { player_id: 6, positions: [ "SF" ], value: 95 }
+    ]
+    4.times { |index| fillers << { player_id: 7 + index, positions: [ "PG" ], value: 90 - index } }
+    6.times { |index| fillers << { player_id: 11 + index, positions: [ "SG" ], value: 80 - index } }
+    guard = { player_id: 50, positions: [ "PG" ], value: 10 }
+    center = { player_id: 60, positions: [ "C" ], value: 1 }
+
+    picks = SnakeDraft.new(order: [ "Only" ], board: fillers + [ guard, center ], rounds: 17).picks
+
+    assert_equal 17, picks.size
+    assert_equal 60, picks.last[:player_id]
+    assert_equal "C", picks.last[:roster_slot]
+    remaining = (fillers + [ guard, center ]).map { |player| player[:player_id] } - picks.map { |pick| pick[:player_id] }
+    assert_equal [ 50 ], remaining
+  end
+
   test "raises BoardExhausted when the board runs out" do
     board = [ { player_id: 1, positions: ALL_POSITIONS, value: 1 } ]
 

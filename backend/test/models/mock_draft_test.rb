@@ -176,7 +176,19 @@ class MockDraftTest < ActiveSupport::TestCase
     assert_not_includes picked, missing_keys.id
     assert_not_includes picked, nil_pts.id
 
-    runs.each { |run| assert_equal [], run.standings }
+    runs.each_with_index do |run, index|
+      assert_equal League::USER_TEAM, run.draft_order[index]
+      assert_equal 8, run.standings.size
+      winner = run.standings.find { |row| row["rank"] == 1 }
+      assert_equal run.draft_order.first, winner["team"]
+      run.standings.each do |row|
+        sum = row["cats"].sum { |_cat, entry| entry["points"].to_f }
+        assert_in_delta sum, row["roto_points"].to_f
+        assert_equal 19, row["cats"].size
+      end
+      chino = run.standings.find { |row| row["team"] == League::USER_TEAM }
+      assert_equal index.zero? ? 1 : 2, chino["rank"]
+    end
     z_totals = runs[0].picks.order(:overall_pick).pluck(:z_total)
     assert z_totals.all? { |total| !total.nil? }
     assert_operator z_totals[0], :>, z_totals[1]
