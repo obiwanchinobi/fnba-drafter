@@ -883,3 +883,126 @@ test('keeps a bounded scroll container and a sticky header', () => {
       .some((cell) => cell.classList.contains('MuiTableCell-stickyHeader')),
   ).toBe(true)
 })
+
+test('Weighted Z and Δ Rank headers are absent by default', () => {
+  const { rerender } = renderTable(
+    <ProjectionsTable
+      rows={[jokic]}
+      sortBy={null}
+      sortDirection="desc"
+      onSort={() => {}}
+      emptyMessage="No projections yet. Use Update from source."
+    />,
+  )
+
+  expect(
+    screen.queryByRole('button', { name: 'Weighted Z' }),
+  ).not.toBeInTheDocument()
+  expect(
+    screen.queryByRole('button', { name: 'Δ Rank' }),
+  ).not.toBeInTheDocument()
+
+  rerender(
+    <ThemeProvider theme={theme}>
+      <ProjectionsTable
+        rows={[jokic]}
+        sortBy={null}
+        sortDirection="desc"
+        onSort={() => {}}
+        emptyMessage="No projections yet. Use Update from source."
+        view="z"
+        zScores={zViewScores}
+      />
+    </ThemeProvider>,
+  )
+
+  expect(
+    screen.queryByRole('button', { name: 'Weighted Z' }),
+  ).not.toBeInTheDocument()
+  expect(
+    screen.queryByRole('button', { name: 'Δ Rank' }),
+  ).not.toBeInTheDocument()
+})
+
+test('Weighted Z and Δ Rank render after Total Z for a weighted collection', () => {
+  const onSort = vi.fn()
+  const rows = [
+    { ...jokic, id: 1, full_name: 'Up Two' },
+    { ...jokic, id: 2, player_id: 2, full_name: 'Down One' },
+    { ...jokic, id: 3, player_id: 3, full_name: 'Flat' },
+    { ...jokic, id: 4, player_id: 4, full_name: 'Unranked' },
+  ]
+
+  renderTable(
+    <ProjectionsTable
+      rows={rows}
+      sortBy={null}
+      sortDirection="desc"
+      onSort={onSort}
+      emptyMessage="No projections yet. Use Update from source."
+      view="z"
+      zScores={zViewScores}
+      weighted={{
+        name: 'Bench fouls',
+        totals: new Map<number, number | null>([
+          [1, 1.5],
+          [2, -0.25],
+          [3, 0],
+          [4, null],
+        ]),
+        rankDelta: new Map<number, number | null>([
+          [1, 2],
+          [2, -1],
+          [3, 0],
+          [4, null],
+        ]),
+      }}
+    />,
+  )
+
+  const headers = screen
+    .getAllByRole('columnheader')
+    .map((header) => header.textContent)
+  expect(headers.indexOf('Weighted Z')).toBe(headers.indexOf('Total Z') + 1)
+  expect(headers.indexOf('Δ Rank')).toBe(headers.indexOf('Weighted Z') + 1)
+
+  fireEvent.click(screen.getByRole('button', { name: 'Weighted Z' }))
+  expect(onSort).toHaveBeenCalledWith('z_weighted')
+  fireEvent.click(screen.getByRole('button', { name: 'Δ Rank' }))
+  expect(onSort).toHaveBeenCalledWith('z_rank_delta')
+
+  expect(cellText('Up Two', 'Weighted Z')).toHaveTextContent('+1.50')
+  expect(cellText('Down One', 'Weighted Z')).toHaveTextContent('-0.25')
+  expect(cellText('Flat', 'Weighted Z').textContent).toBe('+0.00')
+  expect(cellText('Unranked', 'Weighted Z')).toHaveTextContent('—')
+  expect(cellText('Up Two', 'Δ Rank').textContent).toBe('+2')
+  expect(cellText('Down One', 'Δ Rank').textContent).toBe('-1')
+  expect(cellText('Flat', 'Δ Rank').textContent).toBe('0')
+  expect(cellText('Unranked', 'Δ Rank').textContent).toBe('—')
+})
+
+test('z view aria-label includes the collection name when weighted', () => {
+  renderTable(
+    <ProjectionsTable
+      dataset="projection"
+      rows={[jokic]}
+      sortBy={null}
+      sortDirection="desc"
+      onSort={() => {}}
+      emptyMessage="No projections yet. Use Update from source."
+      view="z"
+      zScores={zViewScores}
+      weighted={{
+        name: 'Bench fouls',
+        totals: new Map<number, number | null>([[1, 1.25]]),
+        rankDelta: new Map<number, number | null>([[1, 2]]),
+      }}
+    />,
+  )
+
+  expect(
+    screen.getByRole('table', {
+      name: 'Player projections 2026-27, z-scores, weighted by Bench fouls',
+    }),
+  ).toBeInTheDocument()
+})

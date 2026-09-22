@@ -2,6 +2,10 @@ import { useEffect, useMemo, useState } from 'react'
 import Alert from '@mui/material/Alert'
 import Chip from '@mui/material/Chip'
 import Container from '@mui/material/Container'
+import FormControl from '@mui/material/FormControl'
+import InputLabel from '@mui/material/InputLabel'
+import MenuItem from '@mui/material/MenuItem'
+import Select from '@mui/material/Select'
 import Stack from '@mui/material/Stack'
 import Typography from '@mui/material/Typography'
 import {
@@ -14,6 +18,7 @@ import {
   type Projection,
   type ProjectionRefresh,
 } from '../api/projections.ts'
+import { fetchWeightSets, type WeightSet } from '../api/weightSets.ts'
 import ProjectionsTable, {
   type SortColumn,
   type SortDirection,
@@ -22,6 +27,12 @@ import ProjectionsToolbar, {
   type PositionFilter,
   type StatView,
 } from '../components/ProjectionsToolbar.tsx'
+import {
+  DEFAULT_WEIGHTS,
+  isDefaultWeights,
+  rankByValue,
+  weightedTotalZ,
+} from '../lib/catWeights.ts'
 import {
   basisValue,
   isScoredCat,
@@ -77,11 +88,19 @@ function getSortValue(
     view: StatView
     basis: Basis
     zScores: ZScoresResult
+    weightedTotals: Map<number, number | null>
+    rankDelta: Map<number, number | null>
   },
 ): number | string | null {
-  const { view, basis, zScores } = options
+  const { view, basis, zScores, weightedTotals, rankDelta } = options
   if (column === 'z_total') {
     return zScores.scores.get(row.id)?.total ?? null
+  }
+  if (column === 'z_weighted') {
+    return weightedTotals.get(row.id) ?? null
+  }
+  if (column === 'z_rank_delta') {
+    return rankDelta.get(row.id) ?? null
   }
   if (view === 'z' && isScoredCat(column)) {
     return zScores.scores.get(row.id)?.cats[column] ?? null
@@ -163,6 +182,10 @@ export default function ProjectionsPage() {
   const [sort, setSort] = useState<SortState | null>(null)
   const [view, setView] = useState<StatView>('values')
   const [basis, setBasis] = useState<Basis>('per_game')
+  const [weightSets, setWeightSets] = useState<WeightSet[]>([])
+  const [activeWeightSetId, setActiveWeightSetId] = useState<
+    number | 'default'
+  >('default')
 
   useEffect(() => {
     let cancelled = false
@@ -171,17 +194,31 @@ export default function ProjectionsPage() {
     setError(null)
     setRefreshResult(null)
 
-    loadDataset(dataset, source)
-      .then((data) => {
-        if (!cancelled) {
-          setRows(data)
-        }
-      })
-      .catch((err: unknown) => {
-        if (!cancelled) {
+    const projectionsPromise = loadDataset(dataset, source)
+    const weightSetsPromise = fetchWeightSets()
+
+    Promise.allSettled([projectionsPromise, weightSetsPromise])
+      .then(([projectionResult, weightSetResult]) => {
+        if (cancelled) return
+        if (projectionResult.status === 'fulfilled') {
+          setRows(projectionResult.value)
+        } else {
           setRows([])
+        }
+        if (weightSetResult.status === 'fulfilled') {
+          setWeightSets(weightSetResult.value)
+        } else {
+          setWeightSets([])
+        }
+        const reason =
+          projectionResult.status === 'rejected'
+            ? projectionResult.reason
+            : weightSetResult.status === 'rejected'
+              ? weightSetResult.reason
+              : null
+        if (reason) {
           setError(
-            err instanceof Error ? err.message : 'Failed to load projections',
+            reason instanceof Error ? reason.message : 'Failed to load projections',
           )
         }
       })
@@ -209,6 +246,61 @@ export default function ProjectionsPage() {
     [rows, basis],
   )
 
+  const activeWeightSet =
+    activeWeightSetId === 'default'
+      ? null
+      : (weightSets.find((set) => set.id === activeWeightSetId) ?? null)
+  const activeWeights = activeWeightSet?.weights ?? DEFAULT_WEIGHTS
+
+  const weightedTotals = useMemo(() => {
+    const totals = new Map<number, number | null>()
+    for (const row of rows) {
+      const scores = zScores.scores.get(row.id)
+      totals.set(
+        row.id,
+        scores == null ? null : weightedTotalZ(scores, activeWeights),
+      )
+    }
+    return totals
+  }, [rows, zScores, activeWeights])
+
+  const defaultRanks = useMemo(
+    () => rankByValue(rows, (id) => zScores.scores.get(id)?.total ?? null),
+    [rows, zScores],
+  )
+
+  const weightedRanks = useMemo(
+    () => rankByValue(rows, (id) => weightedTotals.get(id) ?? null),
+    [rows, weightedTotals],
+  )
+
+  // Ranks use every loaded row so a position or team filter does not change Δ Rank.
+  const rankDelta = useMemo(() => {
+    const deltas = new Map<number, number | null>()
+    for (const row of rows) {
+      const defaultRank = defaultRanks.get(row.id) ?? null
+      const weightedRank = weightedRanks.get(row.id) ?? null
+      deltas.set(
+        row.id,
+        defaultRank == null || weightedRank == null
+          ? null
+          : defaultRank - weightedRank,
+      )
+    }
+    return deltas
+  }, [rows, defaultRanks, weightedRanks])
+
+  const weighted =
+    view === 'z' &&
+    activeWeightSet != null &&
+    (!isDefaultWeights(activeWeights) || activeWeightSetId !== 'default')
+      ? {
+          name: activeWeightSet.name,
+          totals: weightedTotals,
+          rankDelta,
+        }
+      : null
+
   const visibleRows = useMemo(() => {
     const filtered = rows.filter(
       (row) =>
@@ -219,13 +311,36 @@ export default function ProjectionsPage() {
     if (!sort) return filtered
     return [...filtered].sort((a, b) => {
       const cmp = compareSortValues(
-        getSortValue(a, sort.column, { view, basis, zScores }),
-        getSortValue(b, sort.column, { view, basis, zScores }),
+        getSortValue(a, sort.column, {
+          view,
+          basis,
+          zScores,
+          weightedTotals,
+          rankDelta,
+        }),
+        getSortValue(b, sort.column, {
+          view,
+          basis,
+          zScores,
+          weightedTotals,
+          rankDelta,
+        }),
         sort.direction,
       )
       return cmp !== 0 ? cmp : a.id - b.id
     })
-  }, [rows, search, position, teams, sort, view, basis, zScores])
+  }, [
+    rows,
+    search,
+    position,
+    teams,
+    sort,
+    view,
+    basis,
+    zScores,
+    weightedTotals,
+    rankDelta,
+  ])
 
   const lastImported = latestImportedAt(rows)
   const hasEstimates =
@@ -331,6 +446,46 @@ export default function ProjectionsPage() {
           <Typography>Loading projections…</Typography>
         ) : (
           <>
+            {view === 'z' ? (
+              <FormControl
+                size="small"
+                sx={{ minWidth: 220, alignSelf: 'flex-start' }}
+              >
+                <InputLabel id="projections-weights-label">Weights</InputLabel>
+                <Select
+                  labelId="projections-weights-label"
+                  id="projections-weights"
+                  label="Weights"
+                  value={
+                    activeWeightSetId === 'default'
+                      ? 'default'
+                      : String(activeWeightSetId)
+                  }
+                  onChange={(event) => {
+                    const value = String(event.target.value)
+                    const next = value === 'default' ? 'default' : Number(value)
+                    setActiveWeightSetId(next)
+                    if (next !== 'default') return
+                    setSort((current) => {
+                      if (
+                        current?.column !== 'z_weighted' &&
+                        current?.column !== 'z_rank_delta'
+                      ) {
+                        return current
+                      }
+                      return { column: 'z_total', direction: 'desc' }
+                    })
+                  }}
+                >
+                  <MenuItem value="default">Default</MenuItem>
+                  {weightSets.map((set) => (
+                    <MenuItem key={set.id} value={String(set.id)}>
+                      {set.name}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            ) : null}
             <ProjectionsTable
               dataset={dataset}
               rows={visibleRows}
@@ -340,6 +495,7 @@ export default function ProjectionsPage() {
               view={view}
               basis={basis}
               zScores={zScores}
+              weighted={weighted}
               emptyMessage={
                 rows.length === 0
                   ? dataset === 'actual'
@@ -350,7 +506,11 @@ export default function ProjectionsPage() {
             />
             {view === 'z' ? (
               <Typography variant="caption">
-                {`Z-scores vs the top ${zScores.poolSize} rostered players (8 teams × 16 roster spots, ≥ 20 GP). TO and PF are reversed so positive is better.`}
+                {`Z-scores vs the top ${zScores.poolSize} rostered players (8 teams × 16 roster spots, ≥ 20 GP). TO and PF are reversed so positive is better.${
+                  weighted
+                    ? ` Weighted Z applies "${weighted.name}"; Total Z uses equal weights; Δ Rank is places gained under the collection.`
+                    : ''
+                }`}
               </Typography>
             ) : null}
             {hasEstimates ? (
