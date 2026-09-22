@@ -2,10 +2,6 @@ import { useEffect, useMemo, useState } from 'react'
 import Alert from '@mui/material/Alert'
 import Chip from '@mui/material/Chip'
 import Container from '@mui/material/Container'
-import FormControl from '@mui/material/FormControl'
-import InputLabel from '@mui/material/InputLabel'
-import MenuItem from '@mui/material/MenuItem'
-import Select from '@mui/material/Select'
 import Stack from '@mui/material/Stack'
 import Typography from '@mui/material/Typography'
 import {
@@ -27,6 +23,7 @@ import ProjectionsToolbar, {
   type PositionFilter,
   type StatView,
 } from '../components/ProjectionsToolbar.tsx'
+import WeightSetDialog from '../components/WeightSetDialog.tsx'
 import {
   DEFAULT_WEIGHTS,
   isDefaultWeights,
@@ -186,6 +183,10 @@ export default function ProjectionsPage() {
   const [activeWeightSetId, setActiveWeightSetId] = useState<
     number | 'default'
   >('default')
+  const [weightDialog, setWeightDialog] = useState<{
+    open: boolean
+    mode: 'create' | 'edit'
+  }>({ open: false, mode: 'create' })
 
   useEffect(() => {
     let cancelled = false
@@ -390,6 +391,38 @@ export default function ProjectionsPage() {
     })
   }
 
+  function resetSortOffWeightedColumns() {
+    setSort((current) => {
+      if (
+        current?.column !== 'z_weighted' &&
+        current?.column !== 'z_rank_delta'
+      ) {
+        return current
+      }
+      return { column: 'z_total', direction: 'desc' }
+    })
+  }
+
+  function handleWeightSetChange(next: number | 'default') {
+    setActiveWeightSetId(next)
+    if (next === 'default') resetSortOffWeightedColumns()
+  }
+
+  async function handleWeightsSaved(saved: WeightSet) {
+    const list = await fetchWeightSets()
+    setWeightSets(list)
+    setActiveWeightSetId(saved.id)
+    setWeightDialog({ open: false, mode: 'create' })
+  }
+
+  async function handleWeightsDeleted() {
+    const list = await fetchWeightSets()
+    setWeightSets(list)
+    setActiveWeightSetId('default')
+    resetSortOffWeightedColumns()
+    setWeightDialog({ open: false, mode: 'create' })
+  }
+
   return (
     <Container
       component="main"
@@ -430,6 +463,13 @@ export default function ProjectionsPage() {
           onViewChange={setView}
           basis={basis}
           onBasisChange={setBasis}
+          weightSets={weightSets}
+          activeWeightSetId={activeWeightSetId}
+          onWeightSetChange={handleWeightSetChange}
+          onCreateWeights={() =>
+            setWeightDialog({ open: true, mode: 'create' })
+          }
+          onEditWeights={() => setWeightDialog({ open: true, mode: 'edit' })}
         />
         {error ? <Alert severity="error">{error}</Alert> : null}
         {refreshResult && !error ? (
@@ -446,46 +486,6 @@ export default function ProjectionsPage() {
           <Typography>Loading projections…</Typography>
         ) : (
           <>
-            {view === 'z' ? (
-              <FormControl
-                size="small"
-                sx={{ minWidth: 220, alignSelf: 'flex-start' }}
-              >
-                <InputLabel id="projections-weights-label">Weights</InputLabel>
-                <Select
-                  labelId="projections-weights-label"
-                  id="projections-weights"
-                  label="Weights"
-                  value={
-                    activeWeightSetId === 'default'
-                      ? 'default'
-                      : String(activeWeightSetId)
-                  }
-                  onChange={(event) => {
-                    const value = String(event.target.value)
-                    const next = value === 'default' ? 'default' : Number(value)
-                    setActiveWeightSetId(next)
-                    if (next !== 'default') return
-                    setSort((current) => {
-                      if (
-                        current?.column !== 'z_weighted' &&
-                        current?.column !== 'z_rank_delta'
-                      ) {
-                        return current
-                      }
-                      return { column: 'z_total', direction: 'desc' }
-                    })
-                  }}
-                >
-                  <MenuItem value="default">Default</MenuItem>
-                  {weightSets.map((set) => (
-                    <MenuItem key={set.id} value={String(set.id)}>
-                      {set.name}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            ) : null}
             <ProjectionsTable
               dataset={dataset}
               rows={visibleRows}
@@ -520,6 +520,20 @@ export default function ProjectionsPage() {
             ) : null}
           </>
         )}
+        <WeightSetDialog
+          open={weightDialog.open}
+          mode={weightDialog.mode}
+          initial={
+            weightDialog.mode === 'edit'
+              ? (activeWeightSet ?? undefined)
+              : undefined
+          }
+          onClose={() => {
+            setWeightDialog((current) => ({ ...current, open: false }))
+          }}
+          onSaved={handleWeightsSaved}
+          onDeleted={handleWeightsDeleted}
+        />
       </Stack>
     </Container>
   )

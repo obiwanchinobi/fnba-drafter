@@ -108,9 +108,44 @@ function jsonBody(body: unknown, ok = true, status = ok ? 200 : 500) {
   }
 }
 
-function stubProjections(rows: Projection[], weightSets: unknown[] = []) {
-  const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-    if (String(input).includes('/api/weight_sets')) return jsonBody(weightSets)
+function stubProjections(
+  rows: Projection[],
+  weightSets: {
+    id: number
+    name: string
+    weights: Record<string, number>
+    updated_at: string
+  }[] = [],
+) {
+  let sets = weightSets.map((set) => ({
+    ...set,
+    weights: { ...set.weights },
+  }))
+  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input)
+    const method = (init?.method ?? 'GET').toUpperCase()
+    if (url.includes('/api/weight_sets')) {
+      if (method === 'POST') {
+        const body = JSON.parse(String(init?.body ?? '{}')) as {
+          name?: string
+          weights?: Record<string, number>
+        }
+        const created = {
+          id: Math.max(0, ...sets.map((set) => set.id)) + 1,
+          name: body.name ?? '',
+          weights: body.weights ?? {},
+          updated_at: '2026-09-22T12:00:00.000Z',
+        }
+        sets = [...sets, created]
+        return jsonBody(created)
+      }
+      if (method === 'DELETE') {
+        const id = Number(url.split('/').pop())
+        sets = sets.filter((set) => set.id !== id)
+        return jsonBody({})
+      }
+      return jsonBody(sets)
+    }
     return jsonBody(rows)
   })
   vi.stubGlobal('fetch', fetchMock)
@@ -974,6 +1009,7 @@ test('a non-default collection shows weighted z and the rank change beside total
 
   const weights = screen.getByRole('combobox', { name: /weights/i })
   expect(weights).toBe(document.getElementById('projections-weights'))
+  expect(document.querySelectorAll('#projections-weights')).toHaveLength(1)
   expect(
     screen.queryByRole('button', { name: 'Weighted Z' }),
   ).not.toBeInTheDocument()
@@ -1046,4 +1082,152 @@ test('a non-default collection shows weighted z and the rank change beside total
   expect(
     screen.queryByText(/Weighted Z applies "Bench fouls"/),
   ).not.toBeInTheDocument()
+})
+
+test('loads /api/weight_sets once when the page mounts', async () => {
+  const fetchMock = stubProjections(THREE_ROWS, [
+    {
+      id: 9,
+      name: 'Bench fouls',
+      weights: { ...DEFAULT_WEIGHTS },
+      updated_at: '2026-09-22T12:00:00.000Z',
+    },
+  ])
+
+  renderPage(<ProjectionsPage />)
+
+  expect(await screen.findByText('Nikola Jokic')).toBeInTheDocument()
+  expect(
+    fetchMock.mock.calls.filter(([input]) =>
+      String(input).includes('/api/weight_sets'),
+    ),
+  ).toEqual([['/api/weight_sets']])
+
+  fireEvent.click(screen.getByRole('button', { name: 'Z-scores' }))
+  fireEvent.mouseDown(screen.getByRole('combobox', { name: /weights/i }))
+  expect(screen.getByRole('option', { name: 'Bench fouls' })).toBeInTheDocument()
+  expect(
+    fetchMock.mock.calls.filter(([input]) =>
+      String(input).includes('/api/weight_sets'),
+    ),
+  ).toHaveLength(1)
+})
+
+test('saving a collection reloads weight sets and selects the saved name', async () => {
+  const fetchMock = stubProjections(THREE_ROWS)
+
+  renderPage(<ProjectionsPage />)
+
+  expect(await screen.findByText('Nikola Jokic')).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Z-scores' }))
+  fireEvent.click(screen.getByRole('button', { name: 'New weights' }))
+  const dialog = screen.getByRole('dialog')
+  fireEvent.change(within(dialog).getByLabelText('Name'), {
+    target: { value: 'Punt fouls' },
+  })
+  fireEvent.change(within(dialog).getByLabelText('PF'), {
+    target: { value: '0' },
+  })
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Save' }))
+
+  await waitFor(() => {
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(screen.getByRole('combobox', { name: /weights/i })).toHaveTextContent(
+      'Punt fouls',
+    )
+  })
+  expect(
+    screen.getByText(/Weighted Z applies "Punt fouls"/),
+  ).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Weighted Z' })).toBeInTheDocument()
+  expect(
+    fetchMock.mock.calls
+      .filter(([input]) => String(input).includes('/api/weight_sets'))
+      .map(([input, init]) => [String(input), init?.method ?? 'GET']),
+  ).toEqual([
+    ['/api/weight_sets', 'GET'],
+    ['/api/weight_sets', 'POST'],
+    ['/api/weight_sets', 'GET'],
+  ])
+})
+
+test('deleting the active collection returns to Default and removes weighted columns', async () => {
+  const fetchMock = stubProjections(
+    [
+      projectionRow({
+        id: 1,
+        full_name: 'Foul Heavy',
+        positions: ['PG'],
+        nba_team: 'OKC',
+        pf: 240,
+      }),
+      projectionRow({
+        id: 2,
+        full_name: 'Foul Light',
+        positions: ['C'],
+        nba_team: 'DEN',
+        pf: 80,
+      }),
+    ],
+    [
+      {
+        id: 9,
+        name: 'Bench fouls',
+        weights: { ...DEFAULT_WEIGHTS, pf: 0 },
+        updated_at: '2026-09-22T12:00:00.000Z',
+      },
+    ],
+  )
+
+  renderPage(<ProjectionsPage />)
+
+  expect(await screen.findByText('Foul Heavy')).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Z-scores' }))
+  fireEvent.mouseDown(screen.getByRole('combobox', { name: /weights/i }))
+  fireEvent.click(screen.getByRole('option', { name: 'Bench fouls' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Weighted Z' }))
+  expect(
+    screen.getByRole('columnheader', { name: 'Weighted Z' }),
+  ).toHaveAttribute('aria-sort', 'descending')
+
+  fireEvent.click(screen.getByRole('button', { name: 'Edit weights' }))
+  const dialog = screen.getByRole('dialog')
+  const callsBeforeConfirm = fetchMock.mock.calls.length
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Delete' }))
+  expect(fetchMock.mock.calls.length).toBe(callsBeforeConfirm)
+  expect(
+    within(dialog).getByRole('button', { name: 'Are you sure' }),
+  ).toBeInTheDocument()
+
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Are you sure' }))
+
+  await waitFor(() => {
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'Weighted Z' }),
+    ).not.toBeInTheDocument()
+  })
+  expect(screen.queryByRole('button', { name: 'Δ Rank' })).not.toBeInTheDocument()
+  expect(screen.getByRole('combobox', { name: /weights/i })).toHaveTextContent(
+    'Default',
+  )
+  expect(screen.getByRole('columnheader', { name: 'Total Z' })).toHaveAttribute(
+    'aria-sort',
+    'descending',
+  )
+  expect(
+    screen.queryByText(/Weighted Z applies "Bench fouls"/),
+  ).not.toBeInTheDocument()
+  expect(
+    fetchMock.mock.calls
+      .filter(([input]) => String(input).includes('/api/weight_sets'))
+      .map(([input, init]) => [
+        String(input),
+        (init?.method ?? 'GET').toUpperCase(),
+      ]),
+  ).toEqual([
+    ['/api/weight_sets', 'GET'],
+    ['/api/weight_sets/9', 'DELETE'],
+    ['/api/weight_sets', 'GET'],
+  ])
 })
