@@ -88,16 +88,18 @@ If worktree isolation cannot be created for a code row, STOP. Do not implement t
       ```markdown
       ## Tracking
 
-      | # | Item | File(s) | DoD | Commit |
-      |---|------|---------|-----|--------|
-      | R2 | … | `path` | `python3 scripts/check_shared_skills.py` | |
+      | # | Item | File(s) | DoD | Commit | Evidence |
+      |---|------|---------|-----|--------|----------|
+      | R2 | … | `path` | `python3 scripts/check_shared_skills.py` | | |
 
       ## Execution protocol
 
-      `send-it` dispatches up to `concurrency_cap` worktree-isolated implementers per batch, then cherry-picks in table order. One auto-heal retry per stale-base conflict. Ephemeral checkpoint = Commit cell (no trailer). Durable checkpoint = `Refs: send-it row <id> of <doc-basename>` trailer. Meta-doc rows apply on the orchestrator branch. Do not commit this file.
+      `send-it` dispatches up to `concurrency_cap` worktree-isolated implementers per batch, then cherry-picks in table order. One auto-heal retry per stale-base conflict. Ephemeral checkpoint = Commit cell (no trailer). Durable checkpoint = `Refs: send-it row <id> of <doc-basename>` trailer. Meta-doc rows apply on the orchestrator branch. Phase 3 writes `Evidence` after UAT. Images stay under gitignored `docs/tmp/uat/`. Do not commit this file or the images.
       ```
 
       Include `Depends on` and/or `Parallel-safe` columns when step 2 produced any. `Parallel-safe` is `false` only when the row must run alone even with no file overlap; default `true` if the column is absent.
+
+      `Evidence` stays empty at bootstrap. Phase 3 fills it. On resume, if `## Tracking` has no `Evidence` column, add that column before Browser UAT without changing other cells.
 
 ---
 
@@ -155,7 +157,7 @@ One parent message containing one spawn per batch row.
   - **Ambiguity:** no question tool. If implementation cannot proceed from the plan and codebase, make no commit; return a self-contained `DECISION NEEDED` block (file:line facts, options, consequences, recommendation). Never refer to "the file above".
   - **Scope:** declared `File(s)` plus co-located test companions of those production files (see §Scope). Touching any other file → no commit, `DECISION NEEDED`.
   - **Tests-as-oracle:** for new behavior, bug fixes, CLI/API contracts, or scoring math, a spec-derived failing test (or failing reproduction) must be observed before the production edit. Docs, comments, ignore rules, and skill prose: test-first N/A. Do not invent `rspec` / `vitest` / `npm` until those tools exist in the worktree. A red from missing imports or an empty suite is not a valid red. Do not weaken tests, add skips, or shrink coverage to go green.
-  - **DoD:** the row's DoD cell must exit 0 inside the worktree. Also run §DoD discovery commands that apply to the touched files.
+  - **DoD:** the row's DoD cell must exit 0 inside the worktree. Also run §DoD discovery shell commands that apply to the touched files. Do not run browser UAT, do not write `docs/tmp/uat/`, and do not edit the seed. The orchestrator captures evidence in Phase 3 against this checkout's `bin/dev`.
   - Conventional commit; one item; no `--no-verify`; no co-author/trailer attribution lines.
   - Trailer: durable → body ends with a blank line then exactly `Refs: send-it row <id> of <doc-basename>` (`<id>` = tracking `#` cell). Ephemeral → no `Refs: send-it row` line.
   - The **Commit-message hygiene** and **Git safety** blocks below, verbatim.
@@ -231,11 +233,53 @@ Then next batch at §2.1.
 ## Phase 3 — Completion
 
 1. **Durable only:** fill each `Commit` cell from the trailer grep. Ephemeral cells are already filled.
-2. **Feature DoD.** If the plan names whole-feature verification commands, run those. Else from `git diff --name-only <starting-head>..HEAD` run §DoD discovery on the union. Record skipped checks (tool missing) as blocked, not passed.
-3. **Report:** rows shipped and commit range; auto-healed; no-ops; `worktree_skipped`; meta-doc applied vs held; archive path or "left in place — git-tracked"; informative/rejected rows not dispatched; any open holds. Do not claim the user accepted the work.
-4. Set the spec-it header `Status` to `send-it complete` (or `send-it blocked` on STOP). Do not rewrite Original input, decisions, or proposed solutions.
-5. **Archive ephemeral only**, last: `mkdir -p docs/tmp/done && mv <path> docs/tmp/done/<basename>`. If the destination exists, do not clobber — report and leave the source. Durable docs stay put.
-6. Do not push, open a PR, squash, or rebase.
+2. **Feature DoD.** If the plan names whole-feature verification commands, run those. Else from `git diff --name-only <starting-head>..HEAD` run the shell rows of §DoD discovery on the union. The UI row is not a shell command. Record skipped checks (tool missing) as blocked, not passed.
+3. **Browser UAT** (below). This is the UI check. Do not fold it back into step 2.
+4. **Report:** rows shipped and commit range; auto-healed; no-ops; `worktree_skipped`; meta-doc applied vs held; archive path or "left in place — git-tracked"; informative/rejected rows not dispatched; any open holds; each tracking id and its `Evidence` cell. Do not claim the user accepted the work. A blocked UAT is a blocked run, not a pass with a footnote.
+5. Set the spec-it header `Status` to `send-it complete` only when the Browser UAT halt condition passed. Otherwise `send-it blocked`. Do not rewrite Original input, decisions, or proposed solutions.
+6. **Archive ephemeral only**, last, and only after `send-it complete`: `mkdir -p docs/tmp/done && mv <path> docs/tmp/done/<basename>`. If the destination exists, do not clobber — report and leave the source. Move only the markdown. Do not move or delete `docs/tmp/uat/`. Durable docs stay put. A blocked UAT does not archive.
+7. Do not push, open a PR, squash, or rebase.
+
+### Browser UAT
+
+If `## Tracking` has no `Evidence` column, add it before this step without changing other cells.
+
+Halt this step only when every `Evidence` cell is `n/a`, or a comma-separated list of existing non-empty repo-relative paths that includes both `<id>.png` and `<id>.gif`, and no cell contains `fail:`. A `fail:` cell, a missing browser tool, a missing `ffmpeg`, or a dev server owned by another checkout stops the run. Set `send-it blocked`. Do not archive. Leave the images in place.
+
+Skip a row whose `Evidence` already lists a non-empty `<id>.png` and `<id>.gif` and does not contain `fail:`. Re-run rows whose cell is empty or contains `fail:`, and overwrite that requirement's files in the same directory.
+
+A row is browser-observable when either:
+
+- a declared path matches `frontend/src/**/*.{tsx,jsx,css,scss}` and is not `*.test.*` or `*.spec.*`, or
+- that requirement's Proposed solution or DoD tells the agent to open the app.
+
+Otherwise write `n/a`. That includes `noop` and `noop-via-<id>` commits, backend-only rows, and skill-prose rows. If those two tests disagree, STOP with `DECISION NEEDED`. Do not screenshot the homepage as a stand-in.
+
+**Server gate**, before any capture. The page is `http://localhost:5173` (the URL `bin/dev` prints). Vite proxies `/api` to `127.0.0.1:3000`.
+
+- Confirm both listeners' cwds are inside the orchestrator worktree (`lsof -nP -iTCP:5173 -sTCP:LISTEN` and the same for 3000, then `lsof -a -p <pid> -d cwd`).
+- If both ports are free, start `bin/dev` from the orchestrator root, wait until both accept, and kill only that process group when UAT ends.
+- If either port is held by another checkout, STOP. Do not capture that app. Do not pick another port (`docs/architecture/worktrees.md`: one `bin/dev` on 3000/5173).
+- If a port is already this worktree's `bin/dev`, reuse it. Do not start a second one. Do not kill a server this run did not start.
+
+**Tools.** Use the harness browser that can open the page, click, type, resize, and save a PNG to an absolute path. On Grok that is chrome-devtools `take_screenshot` with `format: png` and `filePath`. If the tool returns only its own path, copy the file into place. If no harness tool can drive the page and write a PNG, STOP blocked. Do not substitute curl or a unit test. GIF is not a browser feature: `command -v ffmpeg` must succeed. If it does not, STOP blocked. Do not add a package.
+
+**Per browser-observable row**, in table order:
+
+1. Read `## <id>:` Proposed solution for the route and the interaction. Find other routes by reading the frontend router for pages that import a declared UI file.
+2. Desktop viewport 1280×800. Perform the interaction (click, type, navigate). A single untouched render is not a pass. Then open each other route far enough to see the shared control.
+3. Save the settled desktop shot to `docs/tmp/uat/<seed-basename-without-.md>/<id>.png`. The file must be non-empty.
+4. During that interaction, save at least two ordered frames under `docs/tmp/uat/<dir>/frames-<id>/`: `frame-01.png` before the action, one frame after each meaningful step, and a last frame of the settled state. Encode, then delete the frames directory only after the GIF exists and is non-empty:
+
+   ```sh
+   ffmpeg -y -framerate 2 -i "docs/tmp/uat/<dir>/frames-<id>/frame-%02d.png" -loop 0 "docs/tmp/uat/<dir>/<id>.gif"
+   ```
+
+5. Layout or styling (a declared `.css` or `.scss` file, or the Proposed solution says layout, spacing, or responsive): repeat steps 2–4 at 375×812 as `<id>-narrow.png` and `<id>-narrow.gif`.
+6. On success, set `Evidence` to the repo-relative paths in backticks, comma-space separated. A bare file name collides across plans. Example: `` `docs/tmp/uat/20260922_141910_custom-z-score-weight-collections/R4.png`, `docs/tmp/uat/20260922_141910_custom-z-score-weight-collections/R4.gif` ``
+7. On a behavior miss, still save the PNG and GIF of what happened (of the broken route when that is the failure), set `Evidence` to those paths plus ` fail: <one line>`, and stop the UAT loop. Do not implement a fix.
+
+Write `n/a` for every other row in the same pass so a finished table has no empty `Evidence` cell. Do not `git add` the images. Do not commit the seed. Do not rewrite requirement sections.
 
 ---
 
@@ -249,10 +293,10 @@ Discover from the **current worktree**. Do not invent runners.
 | `backend/**/*.rb`, `backend/.rubocop.yml`, `backend/lib/rubocop/` | `(cd backend && bin/rubocop)` |
 | `bin/`, `scripts/test_fnba_cli.py` | `python3 scripts/test_fnba_cli.py` |
 | Named test/DoD command in the row | that command, from the worktree |
-| UI files and a browser tool exists | exercise the changed UI; PNG evidence under gitignored `docs/tmp/` is optional extra, not a substitute for interaction |
+| `frontend/src/**/*.{tsx,jsx,css,scss}` excluding `*.test.*` / `*.spec.*` | No shell command. Phase 3 Browser UAT is the check. Implementers do not run it. |
 | None of the above | inspection of declared files; say so |
 
-A missing required runner blocks the row; it does not pass with a footnote.
+A missing required runner blocks the row; it does not pass with a footnote. Feature DoD runs shell commands from this table only. The UI row is Phase 3 Browser UAT.
 
 ## Scope
 
@@ -280,6 +324,10 @@ Declared production file `dir/X.py` also in-scope: `dir/test_X.py`, `dir/X_test.
 | Stash drifted | STOP |
 | Crash mid-batch | Resume by re-invoking; do not prune stranded worktrees |
 | Ephemeral crash between cherry-pick and cell write | Pre-flight unclaimed SHA → STOP |
+| Dev server owned by another checkout | STOP. `send-it blocked`. Do not capture. Keep images. Do not archive |
+| No browser tool that can drive the page and write a PNG | STOP. `send-it blocked`. Keep images. Do not archive |
+| `ffmpeg` missing | STOP. `send-it blocked`. Keep images. Do not archive |
+| UAT behavior miss | STOP. `send-it blocked`. Keep the failure PNG and GIF. Do not archive |
 
 Auto-heal is only: stale-base conflict, hygiene strip, worktree-skip with valid state. Everything else STOPs. Report accurately; repair is a user decision.
 
@@ -288,6 +336,8 @@ Auto-heal is only: stale-base conflict, hygiene strip, worktree-skip with valid 
 ## Resume
 
 Fresh session, same branch: `/send-it <same path>` (or `/built-it`). Phase 0 re-classifies; existing tracking skips bootstrap. Durable: trailers decide done rows; starting HEAD is the parent of the first trailer. Ephemeral: empty `Commit` cells are remaining; starting HEAD is the parent of the latest recorded SHA.
+
+Commits filled, `Evidence` missing or containing `fail:`: do not re-dispatch those rows. Re-enter Phase 3 Browser UAT and overwrite that requirement's PNG and GIF under `docs/tmp/uat/<seed-basename>/`.
 
 Stranded isolation worktrees are not auto-removed. Remove only a path you have inspected, with the harness remove command in the operations table.
 
