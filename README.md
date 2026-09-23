@@ -29,24 +29,26 @@ Installs backend gems (`bundle install` with Bundler 4.0.20), frontend packages 
 bin/dev
 ```
 
-Starts both processes and kills the process group on exit (Ctrl-C):
+Starts both processes and kills the process group on exit (Ctrl-C). The table is the primary checkout's fallback, used when `backend/.env.local` has no port block:
 
 | Process | URL | Command |
 |---|---|---|
 | API | http://127.0.0.1:3000 | `backend/bin/rails server` |
 | SPA | http://localhost:5173 | Vite (`npm run dev` in `frontend/`) |
 
-Open **http://localhost:5173**. Vite proxies `/api` to the Rails API, so the SPA can `fetch('/api/status')` without CORS on the happy path.
+In a linked worktree, `bin/dev` prints that worktree's ports and, when `bin/dev-proxy` is running, `http://<slug>.fnba.localhost:8080`. See [docs/architecture/worktrees.md](docs/architecture/worktrees.md).
+
+On the primary checkout, open the fallback **http://localhost:5173**. Vite proxies `/api` to the Rails API, so the SPA can `fetch('/api/status')` without CORS on the happy path.
 
 **Update from source** reads `SWID` and `espn_s2` from the ESPN session in local Google Chrome (not env vars). Stay logged in to ESPN in Chrome. macOS may ask once to allow Keychain access so those cookies can be decrypted.
 
-Direct API check:
+Direct API check, primary checkout fallback:
 
 ```sh
 curl -s http://127.0.0.1:3000/api/status
 ```
 
-Proxied through Vite:
+Proxied through Vite, primary checkout fallback:
 
 ```sh
 curl -s http://localhost:5173/api/status
