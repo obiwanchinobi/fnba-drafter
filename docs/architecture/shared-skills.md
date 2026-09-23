@@ -85,7 +85,7 @@ For substantive workflow updates, run these cases in disposable worktrees on the
 | Clean parallel batch | One commit per worktree; serial cherry-pick in table order; ephemeral `Commit` cells filled (no trailer) |
 | Stale-base cherry-pick | Abort, one re-dispatch from current HEAD, second conflict stops |
 | Durable seed | `Refs: send-it row <id> of <basename>` trailer present; cells filled in Phase 3 |
-| UI requirement on the finished branch | Phase 3 saves `<id>.gif` and `<id>.png` under `docs/tmp/uat/<seed-basename>/` and writes those repo-relative paths into that row's `Evidence` cell. Non-UI rows are `n/a`. A server owned by another checkout, a missing browser tool, or a missing `ffmpeg` blocks the run and does not archive. Implementers do not capture. |
+| UI requirement on the finished branch | Phase 3 saves `<id>.gif` and `<id>.png` under `docs/tmp/uat/<seed-basename>/` and writes those repo-relative paths into that row's `Evidence` cell. Non-UI rows are `n/a`. UAT uses only the harness browser already connected for the session; it does not open a second DevTools client or approve a remote-debugging prompt. A server owned by another checkout, a missing browser tool, a missing `ffmpeg`, or a remote-debugging prompt blocks the run and does not archive. Implementers do not capture. |
 
 Use those same cases to investigate differences between harnesses. Sharing source prevents divergent maintained copies; model quality, tools, permissions, context, and instruction precedence still affect outcomes.
 
