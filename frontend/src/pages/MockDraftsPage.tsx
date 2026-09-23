@@ -18,6 +18,7 @@ import Typography from '@mui/material/Typography'
 import { useNavigate, useParams } from 'react-router'
 import {
   createMockDraft,
+  deleteMockDraft,
   fetchMockDraft,
   fetchMockDrafts,
   type MockDraft,
@@ -55,6 +56,7 @@ export default function MockDraftsPage() {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [running, setRunning] = useState(false)
+  const [armedDeleteId, setArmedDeleteId] = useState<number | null>(null)
   const [weightSets, setWeightSets] = useState<WeightSet[]>([])
   const [activeWeightSetId, setActiveWeightSetId] = useState<
     number | 'default'
@@ -159,6 +161,27 @@ export default function MockDraftsPage() {
     }
   }
 
+  async function handleDelete(draftId: number) {
+    if (armedDeleteId !== draftId) {
+      setArmedDeleteId(draftId)
+      return
+    }
+
+    setError(null)
+    try {
+      await deleteMockDraft(draftId)
+      setDrafts(await fetchMockDrafts())
+      if (selectedDraftId === draftId) {
+        setDetail(null)
+        navigate('/mock-drafts', { replace: true })
+      }
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to delete mock draft')
+    } finally {
+      setArmedDeleteId(null)
+    }
+  }
+
   const selectedRun =
     detail?.runs.find((run) => run.user_slot === selectedSlot) ?? null
 
@@ -244,6 +267,7 @@ export default function MockDraftsPage() {
                   <TableCell>Weights</TableCell>
                   <TableCell>Projection version</TableCell>
                   <TableCell>Created</TableCell>
+                  <TableCell />
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -255,6 +279,9 @@ export default function MockDraftsPage() {
                     onClick={() => {
                       setSelectedSlot(null)
                       if (detail?.id !== draft.id) setDetail(null)
+                      if (armedDeleteId != null && armedDeleteId !== draft.id) {
+                        setArmedDeleteId(null)
+                      }
                       navigate(`/mock-drafts/${draft.id}`)
                     }}
                     sx={{ cursor: 'pointer' }}
@@ -266,6 +293,19 @@ export default function MockDraftsPage() {
                       {formatWhen(draft.projection_imported_at)}
                     </TableCell>
                     <TableCell>{formatWhen(draft.created_at)}</TableCell>
+                    <TableCell>
+                      <Button
+                        type="button"
+                        size="small"
+                        color="error"
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          void handleDelete(draft.id)
+                        }}
+                      >
+                        {armedDeleteId === draft.id ? 'Are you sure' : 'Delete'}
+                      </Button>
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>

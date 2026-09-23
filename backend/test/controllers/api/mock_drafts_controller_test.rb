@@ -131,6 +131,41 @@ module Api
       assert_response :not_found
     end
 
+    test "DELETE /api/mock_drafts/:id removes the draft, its runs, and its picks" do
+      128.times { |index| create_draftable(espn_roto_rank: index + 1) }
+      draft = MockDraft.simulate!(policy: "fnba_total_z")
+      run_ids = draft.runs.pluck(:id)
+      assert_equal 8, run_ids.size
+      assert_equal 8 * 128, MockDraftPick.where(mock_draft_run_id: run_ids).count
+
+      assert_difference(
+        -> { MockDraft.count } => -1,
+        -> { MockDraftRun.count } => -8,
+        -> { MockDraftPick.count } => -(8 * 128)
+      ) do
+        assert_queries_match(/DELETE FROM ["']mock_draft_picks["']/, count: 8) do
+          delete "/api/mock_drafts/#{draft.id}"
+        end
+      end
+
+      assert_response :no_content
+      assert_equal "", response.body
+      assert_not MockDraft.exists?(draft.id)
+      assert_equal 0, MockDraftRun.where(id: run_ids).count
+      assert_equal 0, MockDraftPick.where(mock_draft_run_id: run_ids).count
+    end
+
+    test "DELETE /api/mock_drafts/:id is 404 when the draft is missing" do
+      kept = create_saved_draft(created_at: Time.utc(2026, 9, 1), user_rank: 4, user_points: 70)
+
+      assert_no_difference [ "MockDraft.count", "MockDraftRun.count", "MockDraftPick.count" ] do
+        delete "/api/mock_drafts/0"
+      end
+
+      assert_response :not_found
+      assert MockDraft.exists?(kept.id)
+    end
+
     private
       def assert_show_payload(body)
         assert_equal "fnba_total_z", body["policy"]

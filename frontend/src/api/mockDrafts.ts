@@ -77,6 +77,13 @@ export async function createMockDraft(options: {
   return (await response.json()) as MockDraft
 }
 
+export async function deleteMockDraft(id: number): Promise<void> {
+  const response = await fetch(`/api/mock_drafts/${id}`, { method: 'DELETE' })
+  if (!response.ok) {
+    throw new Error(await mockDraftErrorMessage(response))
+  }
+}
+
 async function mockDraftErrorMessage(response: Response): Promise<string> {
   try {
     const body = (await response.json()) as { error?: string }

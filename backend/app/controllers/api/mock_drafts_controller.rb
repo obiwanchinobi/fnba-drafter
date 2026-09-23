@@ -25,6 +25,14 @@ module Api
       render json: { error: "board_too_small" }, status: :unprocessable_entity
     end
 
+    def destroy
+      draft = MockDraft.find_by(id: request.path_parameters[:id])
+      return head :not_found if draft.nil?
+
+      draft.destroy!
+      head :no_content
+    end
+
     private
       def load_draft(id)
         MockDraft.includes(runs: { picks: :player }).find_by(id: id)

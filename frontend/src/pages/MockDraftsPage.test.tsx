@@ -394,6 +394,124 @@ test('a weighted draft says Team Chino ranks by the named collection', async () 
   ).not.toBeInTheDocument()
 })
 
+test('Delete arms on the first click and removes the row on the second', async () => {
+  const confirm = vi.spyOn(window, 'confirm')
+  const saved = draft(4)
+  let rows = [saved]
+  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input)
+    const method = (init?.method ?? 'GET').toUpperCase()
+    if (url === '/api/weight_sets') {
+      return { ok: true, json: async () => [] }
+    }
+    if (method === 'DELETE' && url === '/api/mock_drafts/4') {
+      rows = []
+      return { ok: true, status: 204, json: async () => ({}) }
+    }
+    return { ok: true, json: async () => rows }
+  })
+  vi.stubGlobal('fetch', fetchMock)
+
+  renderPage()
+  const row = await screen.findByTestId('mock-draft-4')
+  fireEvent.click(within(row).getByRole('button', { name: 'Delete' }))
+
+  expect(
+    within(row).getByRole('button', { name: 'Are you sure' }),
+  ).toBeInTheDocument()
+  expect(
+    fetchMock.mock.calls.some(
+      ([, init]) => (init?.method ?? '').toUpperCase() === 'DELETE',
+    ),
+  ).toBe(false)
+  expect(confirm).not.toHaveBeenCalled()
+  expect(screen.getByTestId('location')).toHaveTextContent(/^\/mock-drafts$/)
+
+  fireEvent.click(within(row).getByRole('button', { name: 'Are you sure' }))
+
+  await waitFor(() => {
+    expect(screen.queryByTestId('mock-draft-4')).not.toBeInTheDocument()
+  })
+  expect(screen.getByText('No mock drafts yet.')).toBeInTheDocument()
+  expect(fetchMock).toHaveBeenCalledWith(
+    '/api/mock_drafts/4',
+    expect.objectContaining({ method: 'DELETE' }),
+  )
+  expect(confirm).not.toHaveBeenCalled()
+})
+
+test('deleting the open draft navigates to /mock-drafts and hides the detail', async () => {
+  const saved = draft(4)
+  let rows = [saved]
+  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input)
+    const method = (init?.method ?? 'GET').toUpperCase()
+    if (url === '/api/weight_sets') {
+      return { ok: true, json: async () => [] }
+    }
+    if (method === 'DELETE' && url === '/api/mock_drafts/4') {
+      rows = []
+      return { ok: true, status: 204, json: async () => ({}) }
+    }
+    if (url === '/api/mock_drafts/4') {
+      return { ok: true, json: async () => saved }
+    }
+    return { ok: true, json: async () => rows }
+  })
+  vi.stubGlobal('fetch', fetchMock)
+
+  renderPage('/mock-drafts/4')
+  expect(await screen.findByText(/Pool of 128/)).toBeInTheDocument()
+
+  const row = screen.getByTestId('mock-draft-4')
+  fireEvent.click(within(row).getByRole('button', { name: 'Delete' }))
+  expect(screen.getByText(/Pool of 128/)).toBeInTheDocument()
+  expect(screen.getByTestId('location')).toHaveTextContent(/^\/mock-drafts\/4$/)
+
+  fireEvent.click(within(row).getByRole('button', { name: 'Are you sure' }))
+
+  await waitFor(() => {
+    expect(screen.getByTestId('location')).toHaveTextContent(/^\/mock-drafts$/)
+  })
+  expect(screen.queryByText(/Pool of 128/)).not.toBeInTheDocument()
+  expect(screen.getByText('No mock drafts yet.')).toBeInTheDocument()
+})
+
+test('a failed delete shows the error and keeps the row', async () => {
+  const saved = draft(4)
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      const method = (init?.method ?? 'GET').toUpperCase()
+      if (url === '/api/weight_sets') {
+        return { ok: true, json: async () => [] }
+      }
+      if (method === 'DELETE') {
+        return {
+          ok: false,
+          status: 500,
+          json: async () => ({ error: 'delete_failed' }),
+        }
+      }
+      return { ok: true, json: async () => [saved] }
+    }),
+  )
+
+  renderPage()
+  const row = await screen.findByTestId('mock-draft-4')
+  fireEvent.click(within(row).getByRole('button', { name: 'Delete' }))
+  fireEvent.click(within(row).getByRole('button', { name: 'Are you sure' }))
+
+  expect(await screen.findByRole('alert')).toHaveTextContent('delete_failed')
+  expect(screen.getByTestId('mock-draft-4')).toBeInTheDocument()
+  expect(
+    within(screen.getByTestId('mock-draft-4')).getByRole('button', {
+      name: 'Delete',
+    }),
+  ).toBeInTheDocument()
+})
+
 test('New weights opens the dialog and a save refetches and selects it', async () => {
   const savedSet = {
     id: 3,

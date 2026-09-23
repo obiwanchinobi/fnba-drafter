@@ -14,6 +14,6 @@ class MockDraftRun < ApplicationRecord
   has_many :picks,
     class_name: "MockDraftPick",
     foreign_key: :mock_draft_run_id,
-    dependent: :destroy,
+    dependent: :delete_all,
     inverse_of: :run
 end
