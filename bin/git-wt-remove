@@ -24,7 +24,9 @@
 # Reads FNBA_PORT_BASE from that same env file before deleting the directory
 # and releases the block from the port registry afterwards. If the Rails or
 # Vite port is still listening, prints a warning and the lsof command; it does
-# not stop the stack or abort removal.
+# not stop the stack or abort removal. Then deletes the worktree's Caddy site
+# (http://<slug>.fnba.localhost:8080) and reloads bin/dev-proxy when that
+# proxy is already running. Removal does not start Caddy.
 #
 # Refuses to remove the primary worktree, and refuses if you're cd'd inside
 # the worktree being removed. --force fallback rm -rf only applies to paths
@@ -133,6 +135,9 @@ do_removal() {
     if [ -n "$port_base" ] || [ -n "$registry_base" ]; then
         released_base="${port_base:-$registry_base}"
         echo -e "${GREEN}Released port block :${released_base}${NC}"
+    fi
+    if fnba_remove_caddy_site "$slug"; then
+        fnba_reload_caddy
     fi
 
     local branch_rc=0
@@ -387,6 +392,11 @@ fi
 PLAN_PORT_BASE=$(fnba_read_env_var "${WORKTREE_PATH}/backend/.env.local" FNBA_PORT_BASE)
 if [ -n "$PLAN_PORT_BASE" ]; then
     echo -e "  ${BLUE}Ports:${NC}     Rails :${PLAN_PORT_BASE} · Vite :$((PLAN_PORT_BASE + 1)) ${YELLOW}(will be released)${NC}"
+fi
+PLAN_HOST_SLUG=$(fnba_read_env_var "${WORKTREE_PATH}/backend/.env.local" FNBA_HOST_SLUG)
+if [ -n "$PLAN_HOST_SLUG" ]; then
+    PLAN_ORIGIN=$(fnba_read_env_var "${WORKTREE_PATH}/backend/.env.local" FRONTEND_ORIGIN)
+    echo -e "  ${BLUE}URL:${NC}       ${PLAN_ORIGIN} ${YELLOW}(will be removed)${NC}"
 fi
 echo ""
 

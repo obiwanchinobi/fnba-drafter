@@ -93,6 +93,18 @@ if cmd == "psql":
 sys.exit(0)
 """
 
+FAKE_CADDY_SCRIPT = r"""#!/usr/bin/env python3
+import os
+import sys
+from pathlib import Path
+
+log_path = Path(os.environ["FNBA_FAKE_CADDY_LOG"])
+log_path.parent.mkdir(parents=True, exist_ok=True)
+with log_path.open("a", encoding="utf-8") as handle:
+    handle.write(" ".join(sys.argv[1:]) + "\n")
+raise SystemExit(0)
+"""
+
 
 def run(args, cwd, env=None, input_text=None):
     merged = os.environ.copy()
@@ -143,11 +155,36 @@ class FnbaCliHarness(unittest.TestCase):
         frontend_ignore.write_text("*.local\n")
         git(self.repo, "add", "README.md", "backend/.gitignore", "frontend/.gitignore")
         git(self.repo, "commit", "-m", "init")
+        self.install_fake_caddy()
 
-    def cli(self, *args, cwd=None, input_text=None, env=None):
+    def install_fake_caddy(self):
+        fake_bin = self.tmp / "fake-caddy-bin"
+        fake_bin.mkdir()
+        script = fake_bin / "caddy"
+        script.write_text(FAKE_CADDY_SCRIPT)
+        script.chmod(script.stat().st_mode | stat.S_IEXEC)
+        log = self.tmp / "fake-caddy.log"
+        log.write_text("")
+        self.fake_caddy_bin = fake_bin
+        self.fake_caddy_log = log
+
+    def prepend_fake_caddy(self, env=None):
+        merged = dict(env or {})
+        current = merged.get("PATH", os.environ.get("PATH", ""))
+        prefix = str(self.fake_caddy_bin)
+        parts = [part for part in current.split(os.pathsep) if part]
+        if not parts or parts[0] != prefix:
+            merged["PATH"] = os.pathsep.join([prefix, *parts])
+        merged["FNBA_FAKE_CADDY_LOG"] = str(self.fake_caddy_log)
+        merged.setdefault("FNBA_CONFIG_DIR", str(self.tmp / "config"))
+        return merged
+
+    def cli(self, *args, cwd=None, input_text=None, env=None, fake_caddy=True):
         merged = {"FNBA_CONFIG_DIR": str(self.tmp / "config")}
         if env:
             merged.update(env)
+        if fake_caddy:
+            merged = self.prepend_fake_caddy(merged)
         return run(
             [str(CLI), *args], cwd or self.repo, env=merged, input_text=input_text
         )
@@ -281,7 +318,7 @@ class FnbaCliTest(FnbaCliHarness):
         result = run(
             [str(CLI), "wt", "ft/x"],
             other,
-            env={"FNBA_CONFIG_DIR": str(self.tmp / "config")},
+            env=self.prepend_fake_caddy(),
         )
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("only works in the fnba-drafter repository", result.stderr)
@@ -375,7 +412,7 @@ class FnbaCliTest(FnbaCliHarness):
         self.assertEqual(via_alias.returncode, 0, via_alias.stderr)
         via_remove_alias = self.cli("remove", "ft/one", "-y")
         self.assertEqual(via_remove_alias.returncode, 0, via_remove_alias.stderr)
-        config_env = {"FNBA_CONFIG_DIR": str(self.tmp / "config")}
+        config_env = self.prepend_fake_caddy()
         direct = run(
             [str(REPO_ROOT / "bin" / "git-wt"), "ft/two"], self.repo, env=config_env
         )
@@ -466,6 +503,67 @@ class FnbaCliTest(FnbaCliHarness):
         self.assertRegex(backend, r"(?m)^FRONTEND_PORT=4121$")
         self.assertRegex(frontend, r"(?m)^VITE_PORT=4121$")
         self.assertRegex(frontend, r"(?m)^VITE_API_URL=http://127\.0\.0\.1:4120$")
+
+    def test_create_writes_caddy_site(self):
+        result = self.cli("wt", "ft/board")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        rows = self.port_registry_rows()
+        self.assertEqual(len(rows), 1, rows)
+        base, slug = rows[0]
+        self.assertEqual(slug, "ft_board")
+        site = (self.tmp / "config" / "caddy" / "ft-board.caddy").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("http://ft-board.fnba.localhost:8080", site)
+        self.assertIn(f"reverse_proxy 127.0.0.1:{base + 1}", site)
+        caddyfile = (self.tmp / "config" / "Caddyfile").read_text(encoding="utf-8")
+        self.assertIn("admin localhost:2029", caddyfile)
+        self.assertIn("import caddy/*.caddy", caddyfile)
+        self.assertTrue((self.tmp / "config" / "caddy" / "_placeholder.caddy").is_file())
+        backend = (
+            self.tmp / "fnba-drafter-worktrees" / "ft-board" / "backend" / ".env.local"
+        ).read_text(encoding="utf-8")
+        self.assertRegex(backend, r"(?m)^FNBA_HOST_SLUG=ft-board$")
+        self.assertRegex(
+            backend, r"(?m)^FRONTEND_ORIGIN=http://ft-board\.fnba\.localhost:8080$"
+        )
+
+    def test_remove_deletes_caddy_site(self):
+        created = self.cli("wt", "ft/board")
+        self.assertEqual(created.returncode, 0, created.stdout + created.stderr)
+        site = self.tmp / "config" / "caddy" / "ft-board.caddy"
+        placeholder = self.tmp / "config" / "caddy" / "_placeholder.caddy"
+        self.assertTrue(site.is_file(), created.stdout + created.stderr)
+        self.assertTrue(placeholder.is_file())
+        removed = self.cli("wt-remove", "ft/board", "-y")
+        self.assertEqual(removed.returncode, 0, removed.stdout + removed.stderr)
+        self.assertFalse(site.exists())
+        self.assertTrue(placeholder.is_file())
+
+    def test_reload_skipped_when_proxy_down(self):
+        result = self.cli("wt", "ft/board")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        log = self.fake_caddy_log.read_text(encoding="utf-8")
+        self.assertNotIn("reload", log)
+        self.assertIn("bin/dev-proxy", result.stdout)
+
+    def test_host_slug_lowercases_and_dashes(self):
+        result = self.cli("wt", "Ft/Board.v2")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        site = self.tmp / "config" / "caddy" / "ft-board-v2.caddy"
+        self.assertTrue(site.is_file(), result.stdout + result.stderr)
+
+    def test_dev_proxy_refuses_without_caddy(self):
+        result = self.cli(
+            "dev-proxy",
+            env={
+                "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
+                "FNBA_CONFIG_DIR": str(self.tmp / "config"),
+            },
+            fake_caddy=False,
+        )
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn("brew install caddy", result.stdout + result.stderr)
 
 
 class FnbaCliWorktreeDbTest(FnbaCliHarness):

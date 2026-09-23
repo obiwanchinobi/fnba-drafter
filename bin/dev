@@ -11,6 +11,9 @@ set -a
 [ -f "${ROOT}/backend/.env.local" ] && . "${ROOT}/backend/.env.local"
 set +a
 
+# shellcheck source=lib/fnba-wt-ports.sh
+. "${ROOT}/bin/lib/fnba-wt-ports.sh"
+
 rails_port="${PORT:-3000}"
 vite_port="${FRONTEND_PORT:-5173}"
 
@@ -24,6 +27,13 @@ trap cleanup EXIT INT TERM
 
 echo "API  http://127.0.0.1:${rails_port}"
 echo "SPA  http://localhost:${vite_port}  (open this URL)"
+# No slug means the primary checkout: the API and SPA lines above are enough.
+if [ -n "${FNBA_HOST_SLUG:-}" ]; then
+  echo "Browse ${FRONTEND_ORIGIN}"
+  if ! fnba_dev_proxy_running; then
+    echo "The dev proxy is not running — that URL is dead until you run bin/dev-proxy (once per machine, its own terminal). Direct: http://localhost:${vite_port}"
+  fi
+fi
 
 (
   cd "${ROOT}/backend"

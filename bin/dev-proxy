@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# FNBA Caddy dev proxy, once per machine. Plain HTTP :8080, admin localhost:2029.
+# Per-worktree sites live in ${FNBA_CONFIG_DIR:-~/.config/fnba}/caddy/.
+
+set -euo pipefail
+
+BIN_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=lib/fnba-wt-common.sh
+. "${BIN_DIR}/lib/fnba-wt-common.sh"
+# shellcheck source=lib/fnba-wt-ports.sh
+. "${BIN_DIR}/lib/fnba-wt-ports.sh"
+
+if ! command -v caddy >/dev/null 2>&1; then
+    printf '%s\n' "brew install caddy && bin/dev-proxy" >&2
+    exit 1
+fi
+
+fnba_ensure_caddyfile
+
+if fnba_dev_proxy_running; then
+    printf 'already running; reload with caddy reload --config %s --address localhost:2029\n' "$FNBA_CADDYFILE" >&2
+    exit 1
+fi
+
+if fnba_port_listening "$FNBA_PROXY_PORT"; then
+    printf 'Port %s is already in use. lsof -nP -iTCP:%s -sTCP:LISTEN\n' "$FNBA_PROXY_PORT" "$FNBA_PROXY_PORT" >&2
+    exit 1
+fi
+
+site_count=0
+shopt -s nullglob
+for site in "${FNBA_CADDY_SITES_DIR}"/*.caddy; do
+    [ "$(basename "$site")" = "_placeholder.caddy" ] && continue
+    site_count=$((site_count + 1))
+done
+shopt -u nullglob
+
+printf 'FNBA dev proxy on :%s — %s worktree site(s) from %s\n' \
+    "$FNBA_PROXY_PORT" "$site_count" "$FNBA_CADDY_SITES_DIR"
+exec caddy run --config "$FNBA_CADDYFILE"

@@ -3,14 +3,15 @@
 # FNBA repo CLI. Committed entry point for worktree helpers; alias this as fnba-cli.
 #
 # Usage:
-#   fnba-cli                                Interactive menu (create / refresh / remove)
+#   fnba-cli                                Interactive menu (create / refresh / remove / dev-proxy)
 #   fnba-cli wt [branch] [--no-db]          Create a worktree (fast path requires main)
 #   fnba-cli wt-refresh-db [-y] [--no-migrate]
 #   fnba-cli wt-remove [branch] [-y] [--force]
+#   fnba-cli dev-proxy                      Start the dev proxy (once per machine)
 #   fnba-cli shell-init                     Print `alias fnba-cli=...` for ~/.zshrc
 #   fnba-cli help
 #
-# Direct script names also work: bin/git-wt, bin/git-wt-refresh-db, bin/git-wt-remove.
+# Direct script names also work: bin/git-wt, bin/git-wt-refresh-db, bin/git-wt-remove, bin/dev-proxy.
 # Subcommand aliases: git-wt, git-wt-refresh-db, refresh-db, git-wt-remove, remove.
 
 set -euo pipefail
@@ -28,6 +29,7 @@ Commands:
   wt [branch] [--no-db]               Create a worktree under ../fnba-drafter-worktrees/
   wt-refresh-db [-y] [--no-migrate]   Bootstrap or refresh this worktree's isolated DBs
   wt-remove [branch] [-y] [--force]   Remove a worktree, drop its DBs, and delete its local branch
+  dev-proxy                           Start the FNBA Caddy dev proxy (once per machine)
   shell-init                          Print the alias line to add to ~/.zshrc
   help                                Show this help
 
@@ -37,6 +39,7 @@ Examples:
   fnba-cli wt ft/board --no-db
   fnba-cli wt-refresh-db
   fnba-cli wt-remove ft/board -y
+  fnba-cli dev-proxy
   eval "\$(/path/to/fnba-drafter/bin/fnba-cli shell-init)"
 
 Worktrees are for parallel development: one git-mutating session per worktree.
@@ -52,6 +55,7 @@ interactive_root() {
     echo -e "  ${CYAN}1)${NC} Create a worktree"
     echo -e "  ${CYAN}2)${NC} Refresh this worktree's DB"
     echo -e "  ${CYAN}3)${NC} Remove a worktree"
+    echo -e "  ${CYAN}4)${NC} Start the dev proxy"
     echo -e "  ${CYAN}h)${NC} Help"
     echo ""
     while true; do
@@ -70,6 +74,10 @@ interactive_root() {
             3)
                 echo ""
                 exec "${BIN_DIR}/git-wt-remove"
+                ;;
+            4)
+                echo ""
+                exec "${BIN_DIR}/dev-proxy"
                 ;;
             [Hh]|help)
                 echo ""
@@ -105,6 +113,9 @@ case "$cmd" in
         ;;
     wt-remove|git-wt-remove|remove)
         exec "${BIN_DIR}/git-wt-remove" "$@"
+        ;;
+    dev-proxy)
+        exec "${BIN_DIR}/dev-proxy" "$@"
         ;;
     shell-init)
         printf "alias fnba-cli=%q\n" "${BIN_DIR}/fnba-cli"

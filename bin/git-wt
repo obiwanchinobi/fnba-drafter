@@ -14,7 +14,10 @@
 # is new.
 #
 # After git worktree add, allocates a Rails/Vite port block (base and base+1)
-# and writes it to backend/.env.local and frontend/.env.local. Then clones
+# and writes it to backend/.env.local and frontend/.env.local, including
+# FNBA_HOST_SLUG and FRONTEND_ORIGIN. A Caddy site then serves
+# http://<host-slug>.fnba.localhost:8080 (bin/dev-proxy, once per machine)
+# and reverse-proxies to Vite on base+1. Then clones
 # fnba_drafter_development → fnba_dev_<slug> and creates an empty
 # fnba_test_<slug>, writing FNBA_DB_NAME / FNBA_TEST_DB_NAME into
 # backend/.env.local and FNBA_TEST_DB_NAME into backend/.env.test.local.
@@ -69,7 +72,7 @@ create_worktree() {
     local worktree_path
     worktree_path=$(fnba_worktree_path "$branch")
 
-    local base=""
+    local base="" slug=""
     mkdir -p "$(dirname "$worktree_path")"
     if git show-ref --verify --quiet "refs/remotes/origin/${branch}"; then
         git worktree add "$worktree_path" "origin/${branch}" -b "$branch"
@@ -80,9 +83,14 @@ create_worktree() {
 
     # Allocation failure must not abort: bin/git-wt is set -e, and the if-test
     # is what keeps a failing allocator from killing worktree creation.
-    if base=$(fnba_allocate_port_block "$(fnba_db_slug "$branch")"); then
-        fnba_write_port_block "$worktree_path" "$base"
+    # One slug for allocate, the env block, and the Caddy site.
+    slug=$(fnba_db_slug "$branch")
+    if base=$(fnba_allocate_port_block "$slug"); then
+        fnba_write_port_block "$worktree_path" "$base" "$slug"
         echo -e "${CYAN}Ports: Rails :${base} · Vite :$((base + 1))${NC}"
+        fnba_write_caddy_site "$slug" "$base"
+        fnba_reload_caddy
+        echo -e "${CYAN}URL: $(fnba_worktree_origin "$slug") (served by bin/dev-proxy, once per machine)${NC}"
     else
         echo -e "${YELLOW}Warning: port allocation failed — this worktree falls back to 3000/5173${NC}" >&2
     fi
