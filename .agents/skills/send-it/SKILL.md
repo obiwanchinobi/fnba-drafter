@@ -255,11 +255,11 @@ A row is browser-observable when either:
 
 Otherwise write `n/a`. That includes `noop` and `noop-via-<id>` commits, backend-only rows, and skill-prose rows. If those two tests disagree, STOP with `DECISION NEEDED`. Do not screenshot the homepage as a stand-in.
 
-**Server gate**, before any capture. The page is `http://localhost:5173` (the URL `bin/dev` prints). Vite proxies `/api` to `127.0.0.1:3000`.
+**Server gate**, before any capture. Read the port block from `backend/.env.local` in the orchestrator worktree (`set -a; . backend/.env.local 2>/dev/null; set +a`). The page is `http://localhost:${FRONTEND_PORT:-5173}` and the API port is `${PORT:-3000}`. Those defaults are the primary checkout. Do not use the `.fnba.localhost` URL for UAT (it needs `bin/dev-proxy`). Vite proxies `/api` to `127.0.0.1:${PORT:-3000}`.
 
-- Confirm both listeners' cwds are inside the orchestrator worktree (`lsof -nP -iTCP:5173 -sTCP:LISTEN` and the same for 3000, then `lsof -a -p <pid> -d cwd`).
+- Confirm both listeners' cwds are inside the orchestrator worktree (`lsof -nP -iTCP:${FRONTEND_PORT:-5173} -sTCP:LISTEN` and the same for `${PORT:-3000}`, then `lsof -a -p <pid> -d cwd`).
 - If both ports are free, start `bin/dev` from the orchestrator root, wait until both accept, and kill only that process group when UAT ends.
-- If either port is held by another checkout, STOP. Do not capture that app. Do not pick another port (`docs/architecture/worktrees.md`: one `bin/dev` on 3000/5173).
+- If either port is held by another checkout, STOP. Do not capture that app. Do not pick another port: the block is fixed by `fnba-cli wt` (`docs/architecture/worktrees.md`).
 - If a port is already this worktree's `bin/dev`, reuse it. Do not start a second one. Do not kill a server this run did not start.
 
 **Tools.** Drive the page only through the harness browser already connected for this session. On Grok that is chrome-devtools: open or reuse the page, `resize_page`, `take_snapshot`, `click`, `fill` / `fill_form`, and `take_screenshot` with `format: png` and `filePath` set to the evidence path. One debugger client only. Do not open another DevTools connection — no socket to port 9222, no read of `DevToolsActivePort`, no Chrome started with `--remote-debugging-port`, no Puppeteer or Playwright attached to the user's browser. Each extra client makes Chrome show "Allow remote debugging?" and stops the run. Do not click Allow. If `filePath` is rejected, write the image bytes `take_screenshot` already returned into the evidence path. If the tool returns only its own path, copy that file into place. If no harness tool can drive the page and a PNG cannot be written from that same session, STOP blocked. Do not substitute curl or a unit test. GIF is not a browser feature: `command -v ffmpeg` must succeed. If it does not, STOP blocked. Do not add a package.
@@ -291,7 +291,7 @@ Discover from the **current worktree**. Do not invent runners.
 |---|---|
 | `.agents/`, `.claude/`, `AGENTS.md`, `CLAUDE.md`, `scripts/check_shared_skills.py` | `python3 scripts/check_shared_skills.py` |
 | `backend/**/*.rb`, `backend/.rubocop.yml`, `backend/lib/rubocop/` | `(cd backend && bin/rubocop)` |
-| `bin/`, `scripts/test_fnba_cli.py` | `python3 scripts/test_fnba_cli.py` |
+| `bin/` (includes `bin/dev-proxy` and `bin/lib/`), `scripts/test_fnba_cli.py` | `python3 scripts/test_fnba_cli.py` |
 | Named test/DoD command in the row | that command, from the worktree |
 | `frontend/src/**/*.{tsx,jsx,css,scss}` excluding `*.test.*` / `*.spec.*` | No shell command. Phase 3 Browser UAT is the check. Implementers do not run it. |
 | None of the above | inspection of declared files; say so |
