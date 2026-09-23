@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom/vitest'
-import { render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { ThemeProvider } from '@mui/material/styles'
 import { afterEach, expect, test, vi } from 'vitest'
 import type { ReactElement } from 'react'
@@ -11,6 +11,7 @@ function renderApp(ui: ReactElement) {
 }
 
 afterEach(() => {
+  cleanup()
   vi.unstubAllGlobals()
   vi.restoreAllMocks()
 })
@@ -30,6 +31,26 @@ test('renders the projections page as the home screen', async () => {
   expect(fetchMock).toHaveBeenCalledWith(
     '/api/projections?source=espn&season=2027',
   )
+})
+
+test('opens the mock drafts page from the tab', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => [],
+    }),
+  )
+
+  renderApp(<App />)
+  fireEvent.click(screen.getByRole('tab', { name: 'Mock drafts' }))
+
+  expect(
+    await screen.findByRole('heading', { name: 'Mock drafts' }),
+  ).toBeInTheDocument()
+  expect(
+    screen.queryByRole('heading', { name: '2026–27 projections' }),
+  ).not.toBeInTheDocument()
 })
 
 test('renders an error when the projections request fails', async () => {

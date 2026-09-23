@@ -44,7 +44,7 @@ The shared wording tells the agent to load the named skill; it is not a universa
 
 Both harnesses editing the same checkout change the same files. Separate branches/worktrees still require Git merging, and an already-loaded conversation can retain older instructions. Use fresh sessions for verification after changing a skill. Check personal/plugin overrides if a loader reports another source path.
 
-`spec-it` keeps its plan template (including harness and live model-with-effort provenance), requirement decisions, read-only data review, and plan-only boundary. Its former Grok `build-with-ai` dependency is now an explicit [shared planning reference](../../.agents/skills/spec-it/references/ai-feature-planning.md), retaining the original SpaceXAI default unless the user or repository specifies otherwise. `send-it` keeps worktree-isolated dispatch, serial cherry-pick, bounded stale-base auto-heal, and the spec-it tracking checkpoint; it does not implement because a plan was discussed. No private skill cache is required.
+`spec-it` keeps its plan template (including harness and live model-with-effort provenance), requirement decisions, read-only data review, and plan-only boundary. Its former Grok `build-with-ai` dependency is now an explicit [shared planning reference](../../.agents/skills/spec-it/references/ai-feature-planning.md), retaining the original SpaceXAI default unless the user or repository specifies otherwise. `send-it` keeps worktree-isolated dispatch, serial cherry-pick, bounded stale-base auto-heal, and the spec-it tracking checkpoint; it does not implement because a plan was discussed. After the branch lands, `send-it` runs browser UAT and records each tested requirement's GIF and PNG path on the feedback plan's Tracking `Evidence` cell; images stay under gitignored `docs/tmp/uat/`. No private skill cache is required.
 
 ## Verification
 
@@ -85,6 +85,7 @@ For substantive workflow updates, run these cases in disposable worktrees on the
 | Clean parallel batch | One commit per worktree; serial cherry-pick in table order; ephemeral `Commit` cells filled (no trailer) |
 | Stale-base cherry-pick | Abort, one re-dispatch from current HEAD, second conflict stops |
 | Durable seed | `Refs: send-it row <id> of <basename>` trailer present; cells filled in Phase 3 |
+| UI requirement on the finished branch | Phase 3 saves `<id>.gif` and `<id>.png` under `docs/tmp/uat/<seed-basename>/` and writes those repo-relative paths into that row's `Evidence` cell. Non-UI rows are `n/a`. A server owned by another checkout, a missing browser tool, or a missing `ffmpeg` blocks the run and does not archive. Implementers do not capture. |
 
 Use those same cases to investigate differences between harnesses. Sharing source prevents divergent maintained copies; model quality, tools, permissions, context, and instruction precedence still affect outcomes.
 
