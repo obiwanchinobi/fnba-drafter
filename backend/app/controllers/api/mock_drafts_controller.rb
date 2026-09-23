@@ -13,7 +13,11 @@ module Api
     end
 
     def create
-      draft = MockDraft.simulate!(policy: create_payload["policy"])
+      payload = create_payload
+      weight_set = weight_set_from(payload)
+      return if performed?
+
+      draft = MockDraft.simulate!(policy: payload["policy"], weight_set: weight_set)
       render json: serialize_draft(load_draft(draft.id)), status: :created
     rescue MockDraft::UnknownPolicy
       render json: { error: "unknown_policy" }, status: :unprocessable_entity
@@ -38,6 +42,21 @@ module Api
         {}
       end
 
+      # Absent, or JSON null, means the default unweighted board. A present id
+      # that does not match a collection is unknown_weight_set.
+      def weight_set_from(payload)
+        return nil unless payload.key?("weight_set_id")
+
+        id = payload["weight_set_id"]
+        return nil if id.nil?
+
+        found = WeightSet.find_by(id: id)
+        return found if found
+
+        render json: { error: "unknown_weight_set" }, status: :unprocessable_entity
+        nil
+      end
+
       def serialize_summary(draft)
         serialize_identity(draft).merge(
           "runs" => ordered_runs(draft).map { |run| serialize_run_summary(run, draft.user_team) }
@@ -59,6 +78,8 @@ module Api
           "projection_imported_at" => draft.projection_imported_at.utc.iso8601(3),
           "pool_size" => draft.pool_size,
           "user_team" => draft.user_team,
+          "weight_set_name" => draft.weight_set_name,
+          "weights" => draft.weights,
           "created_at" => draft.created_at.utc.iso8601(3)
         }
       end
@@ -99,7 +120,8 @@ module Api
           "overall_pick" => pick.overall_pick,
           "team" => pick.team,
           "roster_slot" => pick.roster_slot,
-          "z_total" => pick.z_total.to_f
+          "z_total" => pick.z_total.to_f,
+          "z_weighted" => pick.z_weighted.nil? ? nil : pick.z_weighted.to_f
         }
       end
 

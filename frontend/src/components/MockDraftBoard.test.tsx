@@ -47,6 +47,7 @@ const lateWing: DraftPick = {
   injury_status: 'OUT',
   roster_slot: 'SF',
   z_total: 3.5,
+  z_weighted: null,
 }
 
 test('a pick shows in the right round and slot cell', () => {
@@ -81,4 +82,13 @@ test('the user column is highlighted by team name, not user_slot', () => {
   expect(headers[0]).toHaveAttribute('data-user-team', 'true')
   expect(headers[3]).not.toHaveAttribute('data-user-team')
   expect(headers[3]).toHaveTextContent('Team Four')
+})
+
+test('a pick with z_weighted shows the weighted value', () => {
+  const weighted = { ...lateWing, z_weighted: 4.25 }
+  renderBoard(<MockDraftBoard run={runWith([weighted])} userTeam="Team Chino" />)
+
+  const round2 = within(screen.getAllByRole('row')[2]).getAllByRole('cell')
+  expect(round2[7]).toHaveTextContent(formatPick(weighted))
+  expect(round2[7]).toHaveTextContent('Z 3.50 · W 4.25')
 })

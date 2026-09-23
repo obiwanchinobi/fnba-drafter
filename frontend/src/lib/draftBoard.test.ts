@@ -14,6 +14,7 @@ function pick(
     injury_status: null,
     roster_slot: 'PG',
     z_total: 1.25,
+    z_weighted: null,
     ...overrides,
   }
 }
@@ -132,4 +133,21 @@ test('formatPick includes name, positions, roster slot, and overall pick number'
   )
 
   expect(text).toBe('1. Player Name PG/SG PG 12.34')
+})
+
+test('formatPick prefixes total z and weighted z when z_weighted is a number', () => {
+  const text = formatPick(
+    pick({
+      overall_pick: 1,
+      round: 1,
+      slot: 1,
+      full_name: 'Player Name',
+      positions: ['PG', 'SG'],
+      roster_slot: 'PG',
+      z_total: 12.34,
+      z_weighted: 1.5,
+    }),
+  )
+
+  expect(text).toBe('1. Player Name PG/SG PG Z 12.34 · W 1.50')
 })

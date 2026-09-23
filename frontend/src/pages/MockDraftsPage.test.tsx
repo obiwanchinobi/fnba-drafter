@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom/vitest'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { ThemeProvider } from '@mui/material/styles'
 import { afterEach, expect, test, vi } from 'vitest'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router'
@@ -41,6 +41,8 @@ function draft(id: number): MockDraft {
     projection_imported_at: '2026-09-22T03:00:00.000Z',
     pool_size: 128,
     user_team: 'Team Chino',
+    weight_set_name: null,
+    weights: null,
     created_at: '2026-09-22T04:00:00.000Z',
     runs: [
       {
@@ -71,6 +73,7 @@ function draft(id: number): MockDraft {
             injury_status: null,
             roster_slot: 'PG',
             z_total: 1.5,
+            z_weighted: null,
           },
         ],
       },
@@ -110,15 +113,17 @@ test('run button posts and shows the new draft', async () => {
   renderPage()
   fireEvent.click(
     await screen.findByRole('button', {
-      name: 'Run mock draft (FNBA Total-Z, season totals)',
+      name: 'Run mock draft',
     }),
   )
 
   expect(await screen.findByText(/Pool of 128/)).toBeInTheDocument()
-  expect(fetchMock).toHaveBeenCalledWith(
-    '/api/mock_drafts',
-    expect.objectContaining({ method: 'POST' }),
+  expect(screen.getByText(/same player in all 8 permutations/)).toBeInTheDocument()
+  const post = fetchMock.mock.calls.find(
+    ([input, init]) =>
+      String(input) === '/api/mock_drafts' && init?.method === 'POST',
   )
+  expect(JSON.parse(String(post?.[1]?.body))).toEqual({ policy: 'fnba_total_z' })
 })
 
 test('shows the board after a run is selected', async () => {
@@ -159,7 +164,7 @@ test('shows an error when the run fails', async () => {
   renderPage()
   fireEvent.click(
     await screen.findByRole('button', {
-      name: 'Run mock draft (FNBA Total-Z, season totals)',
+      name: 'Run mock draft',
     }),
   )
 
@@ -227,7 +232,7 @@ test('a successful run navigates to the created id', async () => {
   renderPage()
   fireEvent.click(
     await screen.findByRole('button', {
-      name: 'Run mock draft (FNBA Total-Z, season totals)',
+      name: 'Run mock draft',
     }),
   )
 
@@ -260,4 +265,178 @@ test('an unknown id shows the load error and still lists drafts', async () => {
     await screen.findByText('Failed to load mock draft (404)'),
   ).toBeInTheDocument()
   expect(screen.getByText('fnba_total_z')).toBeInTheDocument()
+})
+
+test('the Weights select lists collections returned by /api/weight_sets', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input) === '/api/weight_sets') {
+        return {
+          ok: true,
+          json: async () => [
+            {
+              id: 9,
+              name: 'Blocks only',
+              weights: { blk: 1 },
+              updated_at: '2026-09-24T00:00:00.000Z',
+            },
+          ],
+        }
+      }
+      return { ok: true, json: async () => [] }
+    }),
+  )
+
+  renderPage()
+  expect(
+    await screen.findByText(/both use unweighted Total-Z/),
+  ).toBeInTheDocument()
+  expect(screen.getByText(/FNBA Total-Z, season totals/)).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Edit weights' })).toBeDisabled()
+  fireEvent.mouseDown(screen.getByRole('combobox', { name: /weights/i }))
+  expect(await screen.findByRole('option', { name: 'Default' })).toBeInTheDocument()
+  expect(screen.getByRole('option', { name: 'Blocks only' })).toBeInTheDocument()
+})
+
+test('choosing a collection posts its weight_set_id', async () => {
+  const created = draft(9)
+  created.weight_set_name = 'Blocks only'
+  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input)
+    const method = (init?.method ?? 'GET').toUpperCase()
+    if (url === '/api/mock_drafts' && method === 'POST') {
+      return { ok: true, json: async () => created }
+    }
+    if (url === '/api/weight_sets') {
+      return {
+        ok: true,
+        json: async () => [
+          {
+            id: 9,
+            name: 'Blocks only',
+            weights: { blk: 2 },
+            updated_at: '2026-09-24T00:00:00.000Z',
+          },
+        ],
+      }
+    }
+    if (url === '/api/mock_drafts/9') {
+      return { ok: true, json: async () => created }
+    }
+    return { ok: true, json: async () => [created] }
+  })
+  vi.stubGlobal('fetch', fetchMock)
+
+  renderPage()
+  fireEvent.mouseDown(await screen.findByRole('combobox', { name: /weights/i }))
+  fireEvent.click(await screen.findByRole('option', { name: 'Blocks only' }))
+  expect(screen.getByText(/Team Chino ranks by Blocks only/)).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Run mock draft' }))
+
+  await waitFor(() => {
+    const post = fetchMock.mock.calls.find(
+      ([input, init]) =>
+        String(input) === '/api/mock_drafts' &&
+        (init?.method ?? '').toUpperCase() === 'POST',
+    )
+    expect(JSON.parse(String(post?.[1]?.body))).toEqual({
+      policy: 'fnba_total_z',
+      weight_set_id: 9,
+    })
+  })
+})
+
+test('the list shows the collection name', async () => {
+  const saved = draft(4)
+  saved.weight_set_name = 'Blocks only'
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input) === '/api/weight_sets') {
+        return { ok: true, json: async () => [] }
+      }
+      return { ok: true, json: async () => [saved] }
+    }),
+  )
+
+  renderPage()
+
+  expect(await screen.findByRole('cell', { name: 'Blocks only' })).toBeInTheDocument()
+})
+
+test('a weighted draft says Team Chino ranks by the named collection', async () => {
+  const saved = draft(4)
+  saved.weight_set_name = 'Blocks only'
+  saved.weights = { blk: 2 } as MockDraft['weights']
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url === '/api/weight_sets') {
+        return { ok: true, json: async () => [] }
+      }
+      if (url === '/api/mock_drafts/4') {
+        return { ok: true, json: async () => saved }
+      }
+      return { ok: true, json: async () => [saved] }
+    }),
+  )
+
+  renderPage('/mock-drafts/4')
+
+  expect(
+    await screen.findByText(/Team Chino ranks by Blocks only/),
+  ).toBeInTheDocument()
+  expect(screen.getByText(/other seven teams/)).toBeInTheDocument()
+  expect(
+    screen.queryByText(/same player in all 8 permutations/),
+  ).not.toBeInTheDocument()
+})
+
+test('New weights opens the dialog and a save refetches and selects it', async () => {
+  const savedSet = {
+    id: 3,
+    name: 'Punt fouls',
+    weights: { blk: 1 },
+    updated_at: '2026-09-24T00:00:00.000Z',
+  }
+  let sets: unknown[] = []
+  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input)
+    const method = (init?.method ?? 'GET').toUpperCase()
+    if (url === '/api/weight_sets' && method === 'POST') {
+      sets = [savedSet]
+      return { ok: true, json: async () => savedSet }
+    }
+    if (url === '/api/weight_sets') {
+      return { ok: true, json: async () => sets }
+    }
+    return { ok: true, json: async () => [] }
+  })
+  vi.stubGlobal('fetch', fetchMock)
+
+  renderPage()
+  fireEvent.click(await screen.findByRole('button', { name: 'New weights' }))
+  const dialog = await screen.findByRole('dialog')
+  fireEvent.change(within(dialog).getByLabelText('Name'), {
+    target: { value: 'Punt fouls' },
+  })
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Save' }))
+
+  await waitFor(() => {
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(screen.getByRole('combobox', { name: /weights/i })).toHaveTextContent(
+      'Punt fouls',
+    )
+  })
+  expect(
+    fetchMock.mock.calls
+      .filter(([input]) => String(input).includes('/api/weight_sets'))
+      .map(([input, init]) => [String(input), (init?.method ?? 'GET').toUpperCase()]),
+  ).toEqual([
+    ['/api/weight_sets', 'GET'],
+    ['/api/weight_sets', 'POST'],
+    ['/api/weight_sets', 'GET'],
+  ])
 })

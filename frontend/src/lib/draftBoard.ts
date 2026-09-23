@@ -10,6 +10,7 @@ export type DraftPick = {
   injury_status: string | null
   roster_slot: string
   z_total: number
+  z_weighted: number | null
 }
 
 export type CategoryPoints = { value: number; points: number }
@@ -56,5 +57,9 @@ export function picksToGrid(
 export function formatPick(pick: DraftPick): string {
   const positions = pick.positions.join('/')
   const totalZ = pick.z_total.toFixed(2)
-  return `${pick.overall_pick}. ${pick.full_name} ${positions} ${pick.roster_slot} ${totalZ}`
+  const total =
+    typeof pick.z_weighted === 'number'
+      ? `Z ${totalZ} · W ${pick.z_weighted.toFixed(2)}`
+      : totalZ
+  return `${pick.overall_pick}. ${pick.full_name} ${positions} ${pick.roster_slot} ${total}`
 }

@@ -1,3 +1,4 @@
+import type { CatWeights } from '../lib/catWeights.ts'
 import type { DraftPick, TeamStanding } from '../lib/draftBoard.ts'
 
 export type MockDraftRunSummary = {
@@ -15,6 +16,8 @@ export type MockDraftSummary = {
   projection_imported_at: string
   pool_size: number
   user_team: string
+  weight_set_name: string | null
+  weights: CatWeights | null
   created_at: string
   runs: MockDraftRunSummary[]
 }
@@ -34,6 +37,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   board_too_small:
     'Not enough draftable players to fill 8 teams × 16 rounds',
   unknown_policy: 'Unknown pick policy',
+  unknown_weight_set: 'That weight collection no longer exists.',
 }
 
 export async function fetchMockDrafts(): Promise<MockDraftSummary[]> {
@@ -54,11 +58,18 @@ export async function fetchMockDraft(id: number): Promise<MockDraft> {
 
 export async function createMockDraft(options: {
   policy: string
+  weightSetId?: number
 }): Promise<MockDraft> {
+  const body: { policy: string; weight_set_id?: number } = {
+    policy: options.policy,
+  }
+  if (typeof options.weightSetId === 'number') {
+    body.weight_set_id = options.weightSetId
+  }
   const response = await fetch('/api/mock_drafts', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ policy: options.policy }),
+    body: JSON.stringify(body),
   })
   if (!response.ok) {
     throw new Error(await mockDraftErrorMessage(response))
