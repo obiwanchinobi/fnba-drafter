@@ -55,6 +55,14 @@ export type SortColumn =
   | 'pts'
   | 'ppm'
   | 'z_total'
+  | 'z_weighted'
+  | 'z_rank_delta'
+
+type WeightedColumns = {
+  name: string
+  totals: Map<number, number | null>
+  rankDelta: Map<number, number | null>
+}
 
 type Column = {
   id: string
@@ -64,6 +72,7 @@ type Column = {
   sticky?: 'player' | 'pos' | 'team'
   numeric?: boolean
   zOnly?: boolean
+  weightedOnly?: boolean
 }
 
 const COLUMNS: Column[] = [
@@ -73,6 +82,22 @@ const COLUMNS: Column[] = [
   { id: 'inj', label: 'Inj' },
   { id: 'rank', label: 'Rank', sortColumn: 'rank', numeric: true },
   { id: 'z_total', label: 'Total Z', sortColumn: 'z_total', numeric: true, zOnly: true },
+  {
+    id: 'z_weighted',
+    label: 'Weighted Z',
+    sortColumn: 'z_weighted',
+    numeric: true,
+    zOnly: true,
+    weightedOnly: true,
+  },
+  {
+    id: 'z_rank_delta',
+    label: 'Δ Rank',
+    sortColumn: 'z_rank_delta',
+    numeric: true,
+    zOnly: true,
+    weightedOnly: true,
+  },
   { id: 'gp', label: 'GP', sortColumn: 'gp', numeric: true },
   { id: 'min', label: 'MIN', sortColumn: 'min', numeric: true },
   { id: 'fgm', label: 'FGM/FGA', zLabel: 'FGM', sortColumn: 'fgm', numeric: true },
@@ -155,6 +180,12 @@ function formatZ(value: number | null): string {
   if (value == null) return '—'
   const formatted = value.toFixed(2)
   return value >= 0 ? `+${formatted}` : formatted
+}
+
+function formatRankDelta(value: number | null): string {
+  if (value == null) return '—'
+  if (value > 0) return `+${value}`
+  return String(value)
 }
 
 function columnLabel(column: Column, view: StatView): string {
@@ -290,6 +321,7 @@ function tableAriaLabel(
   rows: Projection[],
   view: StatView,
   basis: Basis,
+  weightedName: string | null,
 ): string {
   const season =
     rows[0]?.season ??
@@ -302,7 +334,11 @@ function tableAriaLabel(
       ? `Player actuals ${range}`
       : `Player projections ${range}`
   const withView = view === 'z' ? `${base}, z-scores` : base
-  return basis === 'total' ? `${withView}, season totals` : withView
+  const withBasis = basis === 'total' ? `${withView}, season totals` : withView
+  if (view === 'z' && weightedName) {
+    return `${withBasis}, weighted by ${weightedName}`
+  }
+  return withBasis
 }
 
 function formatCell(
@@ -312,9 +348,16 @@ function formatCell(
   view: StatView,
   zScores: ZScoresResult | null,
   basis: Basis,
+  weighted: WeightedColumns | null,
 ): string {
   if (view === 'z' && columnId === 'z_total') {
     return formatZ(zScores?.scores.get(row.id)?.total ?? null)
+  }
+  if (view === 'z' && columnId === 'z_weighted') {
+    return formatZ(weighted?.totals.get(row.id) ?? null)
+  }
+  if (view === 'z' && columnId === 'z_rank_delta') {
+    return formatRankDelta(weighted?.rankDelta.get(row.id) ?? null)
   }
   if (view === 'z' && isScoredCat(columnId)) {
     return formatZ(zScores?.scores.get(row.id)?.cats[columnId] ?? null)
@@ -391,6 +434,7 @@ type ProjectionsTableProps = {
   view?: StatView
   basis?: Basis
   zScores?: ZScoresResult | null
+  weighted?: WeightedColumns | null
 }
 
 export default function ProjectionsTable({
@@ -403,9 +447,14 @@ export default function ProjectionsTable({
   view = 'values',
   basis = 'per_game',
   zScores = null,
+  weighted = null,
 }: ProjectionsTableProps) {
   const containerRef = useRef<HTMLDivElement>(null)
-  const visibleColumns = COLUMNS.filter((column) => view === 'z' || !column.zOnly)
+  const visibleColumns = COLUMNS.filter(
+    (column) =>
+      (view === 'z' || !column.zOnly) &&
+      (!column.weightedOnly || (view === 'z' && weighted != null)),
+  )
   const showDeltaCaption =
     dataset === 'projection' && view === 'values' && basis === 'per_game'
   const virtualizer = useVirtualizer({
@@ -433,7 +482,13 @@ export default function ProjectionsTable({
       <Table
         stickyHeader
         size="small"
-        aria-label={tableAriaLabel(dataset, rows, view, basis)}
+        aria-label={tableAriaLabel(
+          dataset,
+          rows,
+          view,
+          basis,
+          weighted?.name ?? null,
+        )}
       >
         <TableHead>
           <TableRow>
@@ -507,6 +562,7 @@ export default function ProjectionsTable({
                             view,
                             zScores,
                             basis,
+                            weighted,
                           )}
                           {showDeltaCaption
                             ? estimatedDeltaCaption(row, column.id)

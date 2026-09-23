@@ -28,7 +28,7 @@ module Api
     end
 
     def refresh
-      source = refresh_payload["source"].presence || DEFAULT_SOURCE
+      source = json_body["source"].presence || DEFAULT_SOURCE
 
       unless source == "espn"
         render json: { error: "unknown_source" }, status: :unprocessable_entity
@@ -51,18 +51,5 @@ module Api
       Rails.logger.warn("ESPN refresh failed: #{error.class}: #{error.message}")
       render json: { error: "espn_fetch_failed" }, status: :bad_gateway
     end
-
-    private
-      # json 3 JSON.parse no longer accepts the options ActiveSupport::JSON.decode
-      # still passes, so JSON POST bodies cannot be read via params.
-      def refresh_payload
-        raw = request.raw_post
-        return {} if raw.blank?
-
-        parsed = JSON.parse(raw)
-        parsed.is_a?(Hash) ? parsed : {}
-      rescue JSON::ParserError
-        {}
-      end
   end
 end

@@ -9,6 +9,7 @@ import ToggleButton from '@mui/material/ToggleButton'
 import ToggleButtonGroup from '@mui/material/ToggleButtonGroup'
 import Typography from '@mui/material/Typography'
 import { DATASET_OPTIONS, type Dataset } from '../api/projections.ts'
+import type { WeightSet } from '../api/weightSets.ts'
 import type { Basis } from '../lib/statBasis.ts'
 
 const PROJECTION_SOURCES = ['espn'] as const
@@ -92,6 +93,11 @@ type ProjectionsToolbarProps = {
   onViewChange?: (view: StatView) => void
   basis?: Basis
   onBasisChange?: (basis: Basis) => void
+  weightSets?: WeightSet[]
+  activeWeightSetId?: number | 'default'
+  onWeightSetChange?: (id: number | 'default') => void
+  onCreateWeights?: () => void
+  onEditWeights?: () => void
 }
 
 export default function ProjectionsToolbar({
@@ -112,6 +118,11 @@ export default function ProjectionsToolbar({
   onViewChange,
   basis = 'per_game',
   onBasisChange,
+  weightSets = [],
+  activeWeightSetId = 'default',
+  onWeightSetChange = () => {},
+  onCreateWeights = () => {},
+  onEditWeights = () => {},
 }: ProjectionsToolbarProps) {
   const sourceLabel = SOURCE_LABELS[source] ?? source
   const teamOptions = nbaTeamOptions(extraTeams)
@@ -203,6 +214,47 @@ export default function ProjectionsToolbar({
         <ToggleButton value="per_game">Per game</ToggleButton>
         <ToggleButton value="total">Season totals</ToggleButton>
       </ToggleButtonGroup>
+      {view === 'z' ? (
+        <FormControl size="small" sx={{ minWidth: 220 }}>
+          <InputLabel id="projections-weights-label">Weights</InputLabel>
+          <Select
+            labelId="projections-weights-label"
+            id="projections-weights"
+            label="Weights"
+            value={
+              activeWeightSetId === 'default'
+                ? 'default'
+                : String(activeWeightSetId)
+            }
+            onChange={(event) => {
+              const value = String(event.target.value)
+              onWeightSetChange(value === 'default' ? 'default' : Number(value))
+            }}
+          >
+            <MenuItem value="default">Default</MenuItem>
+            {weightSets.map((set) => (
+              <MenuItem key={set.id} value={String(set.id)}>
+                {set.name}
+              </MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+      ) : null}
+      {view === 'z' ? (
+        <Button size="small" variant="outlined" onClick={onCreateWeights}>
+          New weights
+        </Button>
+      ) : null}
+      {view === 'z' ? (
+        <Button
+          size="small"
+          variant="outlined"
+          onClick={onEditWeights}
+          disabled={activeWeightSetId === 'default'}
+        >
+          Edit weights
+        </Button>
+      ) : null}
       <FormControl size="small" sx={{ minWidth: 160 }}>
         <InputLabel id="projections-team-label" shrink>
           NBA team

@@ -4,6 +4,7 @@ import { ThemeProvider } from '@mui/material/styles'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import type { ReactElement } from 'react'
 import type { Projection } from '../api/projections.ts'
+import { DEFAULT_WEIGHTS } from '../lib/catWeights.ts'
 import theme from '../theme.ts'
 import ProjectionsPage from './ProjectionsPage.tsx'
 
@@ -99,10 +100,53 @@ const THREE_ROWS: Projection[] = [
   }),
 ]
 
-function stubProjections(rows: Projection[]) {
-  const fetchMock = vi.fn().mockResolvedValue({
-    ok: true,
-    json: async () => rows,
+function jsonBody(body: unknown, ok = true, status = ok ? 200 : 500) {
+  return {
+    ok,
+    status,
+    json: async () => body,
+  }
+}
+
+function stubProjections(
+  rows: Projection[],
+  weightSets: {
+    id: number
+    name: string
+    weights: Record<string, number>
+    updated_at: string
+  }[] = [],
+) {
+  let sets = weightSets.map((set) => ({
+    ...set,
+    weights: { ...set.weights },
+  }))
+  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input)
+    const method = (init?.method ?? 'GET').toUpperCase()
+    if (url.includes('/api/weight_sets')) {
+      if (method === 'POST') {
+        const body = JSON.parse(String(init?.body ?? '{}')) as {
+          name?: string
+          weights?: Record<string, number>
+        }
+        const created = {
+          id: Math.max(0, ...sets.map((set) => set.id)) + 1,
+          name: body.name ?? '',
+          weights: body.weights ?? {},
+          updated_at: '2026-09-22T12:00:00.000Z',
+        }
+        sets = [...sets, created]
+        return jsonBody(created)
+      }
+      if (method === 'DELETE') {
+        const id = Number(url.split('/').pop())
+        sets = sets.filter((set) => set.id !== id)
+        return jsonBody({})
+      }
+      return jsonBody(sets)
+    }
+    return jsonBody(rows)
   })
   vi.stubGlobal('fetch', fetchMock)
   return fetchMock
@@ -114,6 +158,18 @@ function playerNames() {
     .getAllByRole('row')
     .slice(1)
     .map((row) => within(row).getAllByRole('cell')[0]?.textContent)
+}
+
+function cellByHeader(playerName: string, header: string) {
+  const row = screen.getByText(playerName).closest('tr')
+  expect(row).not.toBeNull()
+  const cells = within(row as HTMLTableRowElement).getAllByRole('cell')
+  const headers = screen
+    .getAllByRole('columnheader')
+    .map((column) => column.textContent)
+  const index = headers.indexOf(header)
+  expect(index).toBeGreaterThan(-1)
+  return cells[index]
 }
 
 const originalGetBoundingClientRect = Element.prototype.getBoundingClientRect
@@ -144,9 +200,9 @@ afterEach(() => {
 })
 
 test('shows empty-state copy to use Update from source when there are no rows', async () => {
-  const fetchMock = vi.fn().mockResolvedValue({
-    ok: true,
-    json: async () => [],
+  const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+    if (String(input).includes('/api/weight_sets')) return jsonBody([])
+    return jsonBody([])
   })
   vi.stubGlobal('fetch', fetchMock)
 
@@ -169,51 +225,54 @@ test('shows empty-state copy to use Update from source when there are no rows', 
 test('shows the player name from a mocked projection row', async () => {
   vi.stubGlobal(
     'fetch',
-    vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => [
-        {
-          id: 1,
-          player_id: 1,
-          espn_player_id: 3112335,
-          first_name: 'Nikola',
-          last_name: 'Jokic',
-          full_name: 'Nikola Jokic',
-          positions: ['C'],
-          nba_team: 'DEN',
-          injury_status: null,
-          source: 'espn',
-          season: 2027,
-          gp: 82,
-          min: 2870,
-          fgm: 820,
-          fga: 1400,
-          fg_pct: 820 / 1400,
-          ftm: 410,
-          fta: 500,
-          ft_pct: 410 / 500,
-          tpm: 164,
-          tpa: 410,
-          tp_pct: 164 / 410,
-          oreb: null,
-          dreb: null,
-          ast: 820,
-          ato: 820 / 246,
-          stl: 123,
-          str: 123 / 246,
-          blk: 64,
-          to: 246,
-          pf: null,
-          dd: null,
-          td: null,
-          pts: 2050,
-          ppm: 2050 / 2870,
-          imported_at: '2026-09-18T12:00:00.000Z',
-          missing_stat_keys: ['oreb', 'dreb', 'pf', 'dd', 'td'],
-          estimated_stat_keys: [],
-          espn_roto_rank: 1,
-        },
-      ],
+    vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input).includes('/api/weight_sets')) return jsonBody([])
+      return {
+        ok: true,
+        json: async () => [
+          {
+            id: 1,
+            player_id: 1,
+            espn_player_id: 3112335,
+            first_name: 'Nikola',
+            last_name: 'Jokic',
+            full_name: 'Nikola Jokic',
+            positions: ['C'],
+            nba_team: 'DEN',
+            injury_status: null,
+            source: 'espn',
+            season: 2027,
+            gp: 82,
+            min: 2870,
+            fgm: 820,
+            fga: 1400,
+            fg_pct: 820 / 1400,
+            ftm: 410,
+            fta: 500,
+            ft_pct: 410 / 500,
+            tpm: 164,
+            tpa: 410,
+            tp_pct: 164 / 410,
+            oreb: null,
+            dreb: null,
+            ast: 820,
+            ato: 820 / 246,
+            stl: 123,
+            str: 123 / 246,
+            blk: 64,
+            to: 246,
+            pf: null,
+            dd: null,
+            td: null,
+            pts: 2050,
+            ppm: 2050 / 2870,
+            imported_at: '2026-09-18T12:00:00.000Z',
+            missing_stat_keys: ['oreb', 'dreb', 'pf', 'dd', 'td'],
+            estimated_stat_keys: [],
+            espn_roto_rank: 1,
+          },
+        ],
+      }
     }),
   )
 
@@ -238,7 +297,10 @@ test('shows the player name from a mocked projection row', async () => {
 test('shows an error when the projections request fails', async () => {
   vi.stubGlobal(
     'fetch',
-    vi.fn().mockRejectedValue(new Error('Failed to load projections')),
+    vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input).includes('/api/weight_sets')) return jsonBody([])
+      throw new Error('Failed to load projections')
+    }),
   )
 
   renderPage(<ProjectionsPage />)
@@ -262,7 +324,7 @@ test('search jok leaves one player and does not refetch', async () => {
   expect(playerNames()).toEqual(['Nikola Jokic'])
   expect(screen.queryByText('Shai Gilgeous-Alexander')).not.toBeInTheDocument()
   expect(screen.queryByText('Jayson Tatum')).not.toBeInTheDocument()
-  expect(fetchMock).toHaveBeenCalledTimes(1)
+  expect(fetchMock).toHaveBeenCalledTimes(2)
 })
 
 test('position C keeps centers', async () => {
@@ -309,7 +371,7 @@ test('team DEN keeps Nuggets and does not refetch', async () => {
   expect(playerNames()).toEqual(['Nikola Jokic'])
   expect(screen.queryByText('Shai Gilgeous-Alexander')).not.toBeInTheDocument()
   expect(screen.queryByText('Jayson Tatum')).not.toBeInTheDocument()
-  expect(fetchMock).toHaveBeenCalledTimes(1)
+  expect(fetchMock).toHaveBeenCalledTimes(2)
 })
 
 test('clicking PTS header reorders rows by points', async () => {
@@ -444,6 +506,7 @@ test('NULL OREB sorts last in both directions and does not render as 0.0', async
 test('Update from source POSTs refresh then GETs projections again', async () => {
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input)
+    if (url.includes('/api/weight_sets')) return jsonBody([])
     if (init?.method === 'POST') {
       return {
         ok: true,
@@ -468,7 +531,7 @@ test('Update from source POSTs refresh then GETs projections again', async () =>
   fireEvent.click(screen.getByRole('button', { name: /update from source/i }))
 
   await waitFor(() => {
-    expect(fetchMock).toHaveBeenCalledTimes(3)
+    expect(fetchMock).toHaveBeenCalledTimes(4)
   })
 
   const calls = fetchMock.mock.calls.map(([input, init]) => [
@@ -477,10 +540,11 @@ test('Update from source POSTs refresh then GETs projections again', async () =>
   ])
   expect(calls).toEqual([
     ['/api/projections?source=espn&season=2027', 'GET'],
+    ['/api/weight_sets', 'GET'],
     ['/api/projections/refresh', 'POST'],
     ['/api/projections?source=espn&season=2027', 'GET'],
   ])
-  expect(fetchMock.mock.calls[1]?.[1]).toEqual(
+  expect(fetchMock.mock.calls[2]?.[1]).toEqual(
     expect.objectContaining({
       method: 'POST',
       headers: expect.objectContaining({
@@ -495,6 +559,7 @@ test('Update from source POSTs refresh then GETs projections again', async () =>
 
 test('refresh credentials error shows an alert and keeps the current rows', async () => {
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    if (String(input).includes('/api/weight_sets')) return jsonBody([])
     if (init?.method === 'POST') {
       return {
         ok: false,
@@ -570,6 +635,7 @@ test('default dataset fetches projections and the chip reads Projection', async 
 test('switching to actuals fetches season stats and labels the dataset', async () => {
   const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input)
+    if (url.includes('/api/weight_sets')) return jsonBody([])
     if (url.startsWith('/api/season_stats')) {
       return {
         ok: true,
@@ -818,7 +884,7 @@ test('PTS sort follows the active basis without refetching', async () => {
 
   fireEvent.click(screen.getByRole('button', { name: 'Season totals' }))
   expect(playerNames()).toEqual(['High Volume', 'High Rate'])
-  expect(fetchMock).toHaveBeenCalledTimes(1)
+  expect(fetchMock).toHaveBeenCalledTimes(2)
   expect(screen.getByRole('columnheader', { name: /^PTS$/ })).toHaveAttribute(
     'aria-sort',
     'descending',
@@ -902,4 +968,266 @@ test('a row with pts null shows an em dash for Total Z', async () => {
       'Z-scores vs the top 1 rostered players (8 teams × 16 roster spots, ≥ 20 GP). TO and PF are reversed so positive is better.',
     ),
   ).toBeInTheDocument()
+})
+
+test('a non-default collection shows weighted z and the rank change beside total z', async () => {
+  stubProjections(
+    [
+      projectionRow({
+        id: 1,
+        full_name: 'Foul Heavy',
+        positions: ['PG'],
+        nba_team: 'OKC',
+        pf: 240,
+      }),
+      projectionRow({
+        id: 2,
+        full_name: 'Foul Light',
+        positions: ['C'],
+        nba_team: 'DEN',
+        pf: 80,
+      }),
+    ],
+    [
+      {
+        id: 9,
+        name: 'Bench fouls',
+        weights: { ...DEFAULT_WEIGHTS, pf: 0 },
+        updated_at: '2026-09-22T12:00:00.000Z',
+      },
+    ],
+  )
+
+  renderPage(<ProjectionsPage />)
+
+  expect(await screen.findByText('Foul Heavy')).toBeInTheDocument()
+  expect(
+    screen.queryByRole('combobox', { name: /weights/i }),
+  ).not.toBeInTheDocument()
+
+  fireEvent.click(screen.getByRole('button', { name: 'Z-scores' }))
+
+  const weights = screen.getByRole('combobox', { name: /weights/i })
+  expect(weights).toBe(document.getElementById('projections-weights'))
+  expect(document.querySelectorAll('#projections-weights')).toHaveLength(1)
+  expect(
+    screen.queryByRole('button', { name: 'Weighted Z' }),
+  ).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'Δ Rank' })).not.toBeInTheDocument()
+
+  fireEvent.mouseDown(weights)
+  fireEvent.click(await screen.findByRole('option', { name: 'Bench fouls' }))
+
+  const headers = screen
+    .getAllByRole('columnheader')
+    .map((header) => header.textContent)
+  expect(headers.indexOf('Weighted Z')).toBe(headers.indexOf('Total Z') + 1)
+  expect(headers.indexOf('Δ Rank')).toBe(headers.indexOf('Weighted Z') + 1)
+  expect(
+    screen.getByText(
+      /Weighted Z applies "Bench fouls"; Total Z uses equal weights; Δ Rank is places gained under the collection\./,
+    ),
+  ).toBeInTheDocument()
+  expect(
+    screen.getByRole('table', {
+      name: 'Player projections 2026-27, z-scores, weighted by Bench fouls',
+    }),
+  ).toBeInTheDocument()
+
+  fireEvent.click(screen.getByRole('button', { name: 'Total Z' }))
+  expect(playerNames()).toEqual(['Foul Light', 'Foul Heavy'])
+
+  fireEvent.click(screen.getByRole('button', { name: 'Weighted Z' }))
+  expect(playerNames()).toEqual(['Foul Heavy', 'Foul Light'])
+  expect(cellByHeader('Foul Heavy', 'Δ Rank').textContent).toBe('+1')
+  expect(cellByHeader('Foul Light', 'Δ Rank').textContent).toBe('-1')
+
+  fireEvent.click(screen.getByRole('button', { name: 'Values' }))
+  expect(
+    screen.queryByRole('combobox', { name: /weights/i }),
+  ).not.toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Z-scores' }))
+  expect(screen.getByRole('combobox', { name: /weights/i })).toHaveTextContent(
+    'Bench fouls',
+  )
+  expect(cellByHeader('Foul Heavy', 'Δ Rank').textContent).toBe('+1')
+
+  fireEvent.click(screen.getByRole('button', { name: 'Season totals' }))
+  expect(screen.getByRole('combobox', { name: /weights/i })).toHaveTextContent(
+    'Bench fouls',
+  )
+  expect(cellByHeader('Foul Light', 'Δ Rank').textContent).toBe('-1')
+  fireEvent.click(screen.getByRole('button', { name: 'Per game' }))
+
+  fireEvent.click(screen.getByRole('button', { name: /^C$/ }))
+  expect(playerNames()).toEqual(['Foul Light'])
+  expect(cellByHeader('Foul Light', 'Δ Rank').textContent).toBe('-1')
+
+  fireEvent.click(screen.getByRole('button', { name: 'All' }))
+  expect(cellByHeader('Foul Heavy', 'Δ Rank').textContent).toBe('+1')
+  expect(cellByHeader('Foul Light', 'Δ Rank').textContent).toBe('-1')
+
+  fireEvent.mouseDown(screen.getByRole('combobox', { name: /weights/i }))
+  fireEvent.click(screen.getByRole('option', { name: 'Default' }))
+
+  expect(
+    screen.queryByRole('button', { name: 'Weighted Z' }),
+  ).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'Δ Rank' })).not.toBeInTheDocument()
+  expect(screen.getByRole('columnheader', { name: 'Total Z' })).toHaveAttribute(
+    'aria-sort',
+    'descending',
+  )
+  expect(playerNames()).toEqual(['Foul Light', 'Foul Heavy'])
+  expect(
+    screen.queryByText(/Weighted Z applies "Bench fouls"/),
+  ).not.toBeInTheDocument()
+})
+
+test('loads /api/weight_sets once when the page mounts', async () => {
+  const fetchMock = stubProjections(THREE_ROWS, [
+    {
+      id: 9,
+      name: 'Bench fouls',
+      weights: { ...DEFAULT_WEIGHTS },
+      updated_at: '2026-09-22T12:00:00.000Z',
+    },
+  ])
+
+  renderPage(<ProjectionsPage />)
+
+  expect(await screen.findByText('Nikola Jokic')).toBeInTheDocument()
+  expect(
+    fetchMock.mock.calls.filter(([input]) =>
+      String(input).includes('/api/weight_sets'),
+    ),
+  ).toEqual([['/api/weight_sets']])
+
+  fireEvent.click(screen.getByRole('button', { name: 'Z-scores' }))
+  fireEvent.mouseDown(screen.getByRole('combobox', { name: /weights/i }))
+  expect(screen.getByRole('option', { name: 'Bench fouls' })).toBeInTheDocument()
+  expect(
+    fetchMock.mock.calls.filter(([input]) =>
+      String(input).includes('/api/weight_sets'),
+    ),
+  ).toHaveLength(1)
+})
+
+test('saving a collection reloads weight sets and selects the saved name', async () => {
+  const fetchMock = stubProjections(THREE_ROWS)
+
+  renderPage(<ProjectionsPage />)
+
+  expect(await screen.findByText('Nikola Jokic')).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Z-scores' }))
+  fireEvent.click(screen.getByRole('button', { name: 'New weights' }))
+  const dialog = screen.getByRole('dialog')
+  fireEvent.change(within(dialog).getByLabelText('Name'), {
+    target: { value: 'Punt fouls' },
+  })
+  fireEvent.change(within(dialog).getByLabelText('PF'), {
+    target: { value: '0' },
+  })
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Save' }))
+
+  await waitFor(() => {
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(screen.getByRole('combobox', { name: /weights/i })).toHaveTextContent(
+      'Punt fouls',
+    )
+  })
+  expect(
+    screen.getByText(/Weighted Z applies "Punt fouls"/),
+  ).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Weighted Z' })).toBeInTheDocument()
+  expect(
+    fetchMock.mock.calls
+      .filter(([input]) => String(input).includes('/api/weight_sets'))
+      .map(([input, init]) => [String(input), init?.method ?? 'GET']),
+  ).toEqual([
+    ['/api/weight_sets', 'GET'],
+    ['/api/weight_sets', 'POST'],
+    ['/api/weight_sets', 'GET'],
+  ])
+})
+
+test('deleting the active collection returns to Default and removes weighted columns', async () => {
+  const fetchMock = stubProjections(
+    [
+      projectionRow({
+        id: 1,
+        full_name: 'Foul Heavy',
+        positions: ['PG'],
+        nba_team: 'OKC',
+        pf: 240,
+      }),
+      projectionRow({
+        id: 2,
+        full_name: 'Foul Light',
+        positions: ['C'],
+        nba_team: 'DEN',
+        pf: 80,
+      }),
+    ],
+    [
+      {
+        id: 9,
+        name: 'Bench fouls',
+        weights: { ...DEFAULT_WEIGHTS, pf: 0 },
+        updated_at: '2026-09-22T12:00:00.000Z',
+      },
+    ],
+  )
+
+  renderPage(<ProjectionsPage />)
+
+  expect(await screen.findByText('Foul Heavy')).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Z-scores' }))
+  fireEvent.mouseDown(screen.getByRole('combobox', { name: /weights/i }))
+  fireEvent.click(screen.getByRole('option', { name: 'Bench fouls' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Weighted Z' }))
+  expect(
+    screen.getByRole('columnheader', { name: 'Weighted Z' }),
+  ).toHaveAttribute('aria-sort', 'descending')
+
+  fireEvent.click(screen.getByRole('button', { name: 'Edit weights' }))
+  const dialog = screen.getByRole('dialog')
+  const callsBeforeConfirm = fetchMock.mock.calls.length
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Delete' }))
+  expect(fetchMock.mock.calls.length).toBe(callsBeforeConfirm)
+  expect(
+    within(dialog).getByRole('button', { name: 'Are you sure' }),
+  ).toBeInTheDocument()
+
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Are you sure' }))
+
+  await waitFor(() => {
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'Weighted Z' }),
+    ).not.toBeInTheDocument()
+  })
+  expect(screen.queryByRole('button', { name: 'Δ Rank' })).not.toBeInTheDocument()
+  expect(screen.getByRole('combobox', { name: /weights/i })).toHaveTextContent(
+    'Default',
+  )
+  expect(screen.getByRole('columnheader', { name: 'Total Z' })).toHaveAttribute(
+    'aria-sort',
+    'descending',
+  )
+  expect(
+    screen.queryByText(/Weighted Z applies "Bench fouls"/),
+  ).not.toBeInTheDocument()
+  expect(
+    fetchMock.mock.calls
+      .filter(([input]) => String(input).includes('/api/weight_sets'))
+      .map(([input, init]) => [
+        String(input),
+        (init?.method ?? 'GET').toUpperCase(),
+      ]),
+  ).toEqual([
+    ['/api/weight_sets', 'GET'],
+    ['/api/weight_sets/9', 'DELETE'],
+    ['/api/weight_sets', 'GET'],
+  ])
 })

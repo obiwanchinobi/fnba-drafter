@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { ThemeProvider } from '@mui/material/styles'
 import { afterEach, expect, test, vi } from 'vitest'
 import type { ReactElement } from 'react'
+import { DEFAULT_WEIGHTS } from '../lib/catWeights.ts'
 import theme from '../theme.ts'
 import ProjectionsToolbar from './ProjectionsToolbar.tsx'
 
@@ -20,7 +21,7 @@ const idleHandlers = {
   onDatasetChange: () => {},
   search: '',
   onSearchChange: () => {},
-  position: 'All',
+  position: 'All' as const,
   onPositionChange: () => {},
   teams: [] as string[],
   onTeamsChange: () => {},
@@ -250,4 +251,143 @@ test('clicking Season totals calls onBasisChange with total', () => {
 
   fireEvent.click(screen.getByRole('button', { name: 'Season totals' }))
   expect(onBasisChange).toHaveBeenCalledWith('total')
+})
+
+function weightSet(id: number, name: string) {
+  return {
+    id,
+    name,
+    weights: { ...DEFAULT_WEIGHTS },
+    updated_at: '2026-09-22T12:00:00.000Z',
+  }
+}
+
+test('weights controls are absent on the values view and present for z-scores', () => {
+  const { rerender } = renderToolbar(
+    <ProjectionsToolbar
+      source="espn"
+      {...idleHandlers}
+      view="values"
+      weightSets={[weightSet(9, 'Bench fouls')]}
+      activeWeightSetId={9}
+    />,
+  )
+
+  expect(
+    screen.queryByRole('combobox', { name: /weights/i }),
+  ).not.toBeInTheDocument()
+  expect(
+    screen.queryByRole('button', { name: 'New weights' }),
+  ).not.toBeInTheDocument()
+  expect(
+    screen.queryByRole('button', { name: 'Edit weights' }),
+  ).not.toBeInTheDocument()
+
+  rerender(
+    <ThemeProvider theme={theme}>
+      <ProjectionsToolbar
+        source="espn"
+        {...idleHandlers}
+        view="z"
+        weightSets={[weightSet(9, 'Bench fouls')]}
+        activeWeightSetId={9}
+      />
+    </ThemeProvider>,
+  )
+
+  expect(screen.getByRole('combobox', { name: /weights/i })).toBe(
+    document.getElementById('projections-weights'),
+  )
+  expect(screen.getByRole('button', { name: 'New weights' })).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Edit weights' })).toBeInTheDocument()
+})
+
+test('the Weights select lists Default then saved names and reports the chosen id', () => {
+  const onWeightSetChange = vi.fn()
+  const sets = [weightSet(2, 'Bench fouls'), weightSet(5, 'Punt fouls')]
+  const { rerender } = renderToolbar(
+    <ProjectionsToolbar
+      source="espn"
+      {...idleHandlers}
+      view="z"
+      weightSets={sets}
+      activeWeightSetId="default"
+      onWeightSetChange={onWeightSetChange}
+    />,
+  )
+
+  fireEvent.mouseDown(screen.getByRole('combobox', { name: /weights/i }))
+  expect(
+    screen.getAllByRole('option').map((option) => option.textContent),
+  ).toEqual(['Default', 'Bench fouls', 'Punt fouls'])
+  fireEvent.click(screen.getByRole('option', { name: 'Punt fouls' }))
+  expect(onWeightSetChange).toHaveBeenCalledWith(5)
+
+  rerender(
+    <ThemeProvider theme={theme}>
+      <ProjectionsToolbar
+        source="espn"
+        {...idleHandlers}
+        view="z"
+        weightSets={sets}
+        activeWeightSetId={5}
+        onWeightSetChange={onWeightSetChange}
+      />
+    </ThemeProvider>,
+  )
+
+  fireEvent.mouseDown(screen.getByRole('combobox', { name: /weights/i }))
+  fireEvent.click(screen.getByRole('option', { name: 'Default' }))
+  expect(onWeightSetChange).toHaveBeenCalledWith('default')
+})
+
+test('Edit weights is disabled for Default and enabled for a saved collection', () => {
+  const sets = [weightSet(9, 'Bench fouls')]
+  const { rerender } = renderToolbar(
+    <ProjectionsToolbar
+      source="espn"
+      {...idleHandlers}
+      view="z"
+      weightSets={sets}
+      activeWeightSetId="default"
+    />,
+  )
+
+  expect(screen.getByRole('button', { name: 'Edit weights' })).toBeDisabled()
+
+  rerender(
+    <ThemeProvider theme={theme}>
+      <ProjectionsToolbar
+        source="espn"
+        {...idleHandlers}
+        view="z"
+        weightSets={sets}
+        activeWeightSetId={9}
+      />
+    </ThemeProvider>,
+  )
+
+  expect(screen.getByRole('button', { name: 'Edit weights' })).toBeEnabled()
+})
+
+test('New weights and Edit weights call their callbacks', () => {
+  const onCreateWeights = vi.fn()
+  const onEditWeights = vi.fn()
+
+  renderToolbar(
+    <ProjectionsToolbar
+      source="espn"
+      {...idleHandlers}
+      view="z"
+      weightSets={[weightSet(9, 'Bench fouls')]}
+      activeWeightSetId={9}
+      onCreateWeights={onCreateWeights}
+      onEditWeights={onEditWeights}
+    />,
+  )
+
+  fireEvent.click(screen.getByRole('button', { name: 'New weights' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Edit weights' }))
+  expect(onCreateWeights).toHaveBeenCalledTimes(1)
+  expect(onEditWeights).toHaveBeenCalledTimes(1)
 })

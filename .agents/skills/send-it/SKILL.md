@@ -262,7 +262,7 @@ Otherwise write `n/a`. That includes `noop` and `noop-via-<id>` commits, backend
 - If either port is held by another checkout, STOP. Do not capture that app. Do not pick another port (`docs/architecture/worktrees.md`: one `bin/dev` on 3000/5173).
 - If a port is already this worktree's `bin/dev`, reuse it. Do not start a second one. Do not kill a server this run did not start.
 
-**Tools.** Use the harness browser that can open the page, click, type, resize, and save a PNG to an absolute path. On Grok that is chrome-devtools `take_screenshot` with `format: png` and `filePath`. If the tool returns only its own path, copy the file into place. If no harness tool can drive the page and write a PNG, STOP blocked. Do not substitute curl or a unit test. GIF is not a browser feature: `command -v ffmpeg` must succeed. If it does not, STOP blocked. Do not add a package.
+**Tools.** Drive the page only through the harness browser already connected for this session. On Grok that is chrome-devtools: open or reuse the page, `resize_page`, `take_snapshot`, `click`, `fill` / `fill_form`, and `take_screenshot` with `format: png` and `filePath` set to the evidence path. One debugger client only. Do not open another DevTools connection — no socket to port 9222, no read of `DevToolsActivePort`, no Chrome started with `--remote-debugging-port`, no Puppeteer or Playwright attached to the user's browser. Each extra client makes Chrome show "Allow remote debugging?" and stops the run. Do not click Allow. If `filePath` is rejected, write the image bytes `take_screenshot` already returned into the evidence path. If the tool returns only its own path, copy that file into place. If no harness tool can drive the page and a PNG cannot be written from that same session, STOP blocked. Do not substitute curl or a unit test. GIF is not a browser feature: `command -v ffmpeg` must succeed. If it does not, STOP blocked. Do not add a package.
 
 **Per browser-observable row**, in table order:
 
@@ -326,6 +326,7 @@ Declared production file `dir/X.py` also in-scope: `dir/test_X.py`, `dir/X_test.
 | Ephemeral crash between cherry-pick and cell write | Pre-flight unclaimed SHA → STOP |
 | Dev server owned by another checkout | STOP. `send-it blocked`. Do not capture. Keep images. Do not archive |
 | No browser tool that can drive the page and write a PNG | STOP. `send-it blocked`. Keep images. Do not archive |
+| Browser asks to allow remote debugging, or saving the PNG would require a second DevTools client | STOP. `send-it blocked`. Do not click Allow. Do not open another client. Keep images. Do not archive |
 | `ffmpeg` missing | STOP. `send-it blocked`. Keep images. Do not archive |
 | UAT behavior miss | STOP. `send-it blocked`. Keep the failure PNG and GIF. Do not archive |
 
