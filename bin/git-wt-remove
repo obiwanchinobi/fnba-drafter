@@ -21,6 +21,11 @@
 # fnba_test_<slug>_* parallel workers. dropdb failure prints the retry command
 # and does not abort directory removal.
 #
+# Reads FNBA_PORT_BASE from that same env file before deleting the directory
+# and releases the block from the port registry afterwards. If the Rails or
+# Vite port is still listening, prints a warning and the lsof command; it does
+# not stop the stack or abort removal.
+#
 # Refuses to remove the primary worktree, and refuses if you're cd'd inside
 # the worktree being removed. --force fallback rm -rf only applies to paths
 # under ../fnba-drafter-worktrees/.
@@ -32,6 +37,8 @@ BIN_DIR="$(cd "$(dirname "$0")" && pwd)"
 . "${BIN_DIR}/lib/fnba-wt-common.sh"
 # shellcheck source=lib/fnba-wt-db.sh
 . "${BIN_DIR}/lib/fnba-wt-db.sh"
+# shellcheck source=lib/fnba-wt-ports.sh
+. "${BIN_DIR}/lib/fnba-wt-ports.sh"
 
 fnba_require_git
 fnba_require_repo
@@ -63,10 +70,23 @@ do_removal() {
     local remove_ok=false
     local worktree_remove_rc=0
     local drop_dev="" drop_test=""
+    local port_base="" vite_port="" slug="" registry_base="" released_base=""
 
     fnba_resolve_worktree_dbs "$WORKTREE_PATH" "$BRANCH_NAME"
     drop_dev="$FNBA_RESOLVED_DEV_DB"
     drop_test="$FNBA_RESOLVED_TEST_DB"
+    port_base=$(fnba_read_env_var "${WORKTREE_PATH}/backend/.env.local" FNBA_PORT_BASE)
+    slug=$(fnba_db_slug "$BRANCH_NAME")
+    registry_base=$(fnba_registered_port_base "$slug")
+
+    if [ -n "$port_base" ]; then
+        vite_port=$((port_base + 1))
+        if fnba_port_listening "$port_base" || fnba_port_listening "$vite_port"; then
+            echo -e "${YELLOW}Warning: Rails :${port_base} or Vite :${vite_port} is still listening. Stop that bin/dev; removal will not stop it.${NC}" >&2
+            echo -e "${YELLOW}lsof -nP -iTCP:${port_base} -sTCP:LISTEN${NC}" >&2
+            echo -e "${YELLOW}lsof -nP -iTCP:${vite_port} -sTCP:LISTEN${NC}" >&2
+        fi
+    fi
 
     set +e
     if [ "$FORCE" = true ]; then
@@ -108,6 +128,12 @@ do_removal() {
         fi
     fi
     echo -e "${GREEN}✅ Removed worktree ${WORKTREE_PATH}${NC}"
+
+    fnba_release_port_block "$slug" "$port_base"
+    if [ -n "$port_base" ] || [ -n "$registry_base" ]; then
+        released_base="${port_base:-$registry_base}"
+        echo -e "${GREEN}Released port block :${released_base}${NC}"
+    fi
 
     local branch_rc=0
     if git show-ref --verify --quiet "refs/heads/${BRANCH_NAME}"; then
@@ -357,6 +383,10 @@ if [ -n "$FNBA_RESOLVED_DEV_DB" ] || [ -n "$FNBA_RESOLVED_TEST_DB" ]; then
     echo -e "  ${BLUE}Databases:${NC} ${YELLOW}(will be dropped)${NC}"
     [ -n "$FNBA_RESOLVED_DEV_DB" ] && echo -e "    ${FNBA_RESOLVED_DEV_DB}"
     [ -n "$FNBA_RESOLVED_TEST_DB" ] && echo -e "    ${FNBA_RESOLVED_TEST_DB} (and ${FNBA_RESOLVED_TEST_DB}_* workers)"
+fi
+PLAN_PORT_BASE=$(fnba_read_env_var "${WORKTREE_PATH}/backend/.env.local" FNBA_PORT_BASE)
+if [ -n "$PLAN_PORT_BASE" ]; then
+    echo -e "  ${BLUE}Ports:${NC}     Rails :${PLAN_PORT_BASE} · Vite :$((PLAN_PORT_BASE + 1)) ${YELLOW}(will be released)${NC}"
 fi
 echo ""
 

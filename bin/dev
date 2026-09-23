@@ -5,6 +5,15 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
+# A missing backend/.env.local is the primary checkout. The && list must not
+# trip set -e. Blank PORT / FRONTEND_PORT still fall back below.
+set -a
+[ -f "${ROOT}/backend/.env.local" ] && . "${ROOT}/backend/.env.local"
+set +a
+
+rails_port="${PORT:-3000}"
+vite_port="${FRONTEND_PORT:-5173}"
+
 cleanup() {
   trap - EXIT INT TERM
   # Negative PID = this script's process group (Rails + Vite + their children).
@@ -13,12 +22,12 @@ cleanup() {
 
 trap cleanup EXIT INT TERM
 
-echo "API  http://127.0.0.1:3000"
-echo "SPA  http://localhost:5173  (open this URL)"
+echo "API  http://127.0.0.1:${rails_port}"
+echo "SPA  http://localhost:${vite_port}  (open this URL)"
 
 (
   cd "${ROOT}/backend"
-  exec ./bin/rails server -b 127.0.0.1 -p 3000
+  exec ./bin/rails server -b 127.0.0.1 -p "${rails_port}"
 ) &
 
 (

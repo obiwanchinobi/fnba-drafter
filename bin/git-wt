@@ -13,14 +13,17 @@
 # ref exists). Interactive mode creates from the current HEAD when the branch
 # is new.
 #
-# After git worktree add, clones fnba_drafter_development → fnba_dev_<slug>
-# and creates an empty fnba_test_<slug>, then writes FNBA_DB_NAME /
-# FNBA_TEST_DB_NAME into backend/.env.local and FNBA_TEST_DB_NAME into
-# backend/.env.test.local. --no-db skips that; the worktree shares main's DBs
-# until fnba-cli wt-refresh-db. Does not run bin/setup or copy node_modules.
-# The new worktree still needs bin/setup before bin/dev / tests.
+# After git worktree add, allocates a Rails/Vite port block (base and base+1)
+# and writes it to backend/.env.local and frontend/.env.local. Then clones
+# fnba_drafter_development → fnba_dev_<slug> and creates an empty
+# fnba_test_<slug>, writing FNBA_DB_NAME / FNBA_TEST_DB_NAME into
+# backend/.env.local and FNBA_TEST_DB_NAME into backend/.env.test.local.
+# --no-db skips the databases; the worktree shares main's DBs until
+# fnba-cli wt-refresh-db. Port allocation still runs. Does not run bin/setup
+# or copy node_modules. The new worktree still needs bin/setup before
+# bin/dev / tests.
 #
-# No per-worktree ports or Caddy — one bin/dev on 3000/5173 at a time.
+# The primary checkout keeps Rails :3000 and Vite :5173 and gets no port block.
 # cmux opens the new worktree when installed and stdout is a TTY.
 
 set -e
@@ -30,6 +33,8 @@ BIN_DIR="$(cd "$(dirname "$0")" && pwd)"
 . "${BIN_DIR}/lib/fnba-wt-common.sh"
 # shellcheck source=lib/fnba-wt-db.sh
 . "${BIN_DIR}/lib/fnba-wt-db.sh"
+# shellcheck source=lib/fnba-wt-ports.sh
+. "${BIN_DIR}/lib/fnba-wt-ports.sh"
 
 fnba_require_git
 fnba_require_repo
@@ -64,6 +69,7 @@ create_worktree() {
     local worktree_path
     worktree_path=$(fnba_worktree_path "$branch")
 
+    local base=""
     mkdir -p "$(dirname "$worktree_path")"
     if git show-ref --verify --quiet "refs/remotes/origin/${branch}"; then
         git worktree add "$worktree_path" "origin/${branch}" -b "$branch"
@@ -71,6 +77,15 @@ create_worktree() {
         git worktree add -b "$branch" "$worktree_path" "$start_point"
     fi
     echo -e "${GREEN}✅ ${branch} → ${worktree_path}${NC}"
+
+    # Allocation failure must not abort: bin/git-wt is set -e, and the if-test
+    # is what keeps a failing allocator from killing worktree creation.
+    if base=$(fnba_allocate_port_block "$(fnba_db_slug "$branch")"); then
+        fnba_write_port_block "$worktree_path" "$base"
+        echo -e "${CYAN}Ports: Rails :${base} · Vite :$((base + 1))${NC}"
+    else
+        echo -e "${YELLOW}Warning: port allocation failed — this worktree falls back to 3000/5173${NC}" >&2
+    fi
 
     if [ "$NO_DB" = true ]; then
         echo -e "${CYAN}Skipping per-worktree DB setup (--no-db); worktree shares main's databases until fnba-cli wt-refresh-db${NC}"

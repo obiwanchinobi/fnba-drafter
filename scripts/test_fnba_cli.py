@@ -133,12 +133,23 @@ class FnbaCliHarness(unittest.TestCase):
         git(self.repo, "config", "user.name", "FNBA Test")
         git(self.repo, "config", "commit.gpgsign", "false")
         (self.repo / "README.md").write_text("fnba\n")
-        git(self.repo, "add", "README.md")
+        # Real backend/.gitignore and frontend/.gitignore hide the port env
+        # files. Without that, git worktree remove treats them as untracked.
+        backend_ignore = self.repo / "backend" / ".gitignore"
+        frontend_ignore = self.repo / "frontend" / ".gitignore"
+        backend_ignore.parent.mkdir(parents=True, exist_ok=True)
+        frontend_ignore.parent.mkdir(parents=True, exist_ok=True)
+        backend_ignore.write_text("/.env*\n")
+        frontend_ignore.write_text("*.local\n")
+        git(self.repo, "add", "README.md", "backend/.gitignore", "frontend/.gitignore")
         git(self.repo, "commit", "-m", "init")
 
     def cli(self, *args, cwd=None, input_text=None, env=None):
+        merged = {"FNBA_CONFIG_DIR": str(self.tmp / "config")}
+        if env:
+            merged.update(env)
         return run(
-            [str(CLI), *args], cwd or self.repo, env=env, input_text=input_text
+            [str(CLI), *args], cwd or self.repo, env=merged, input_text=input_text
         )
 
     def install_fake_pg(self):
@@ -158,10 +169,23 @@ class FnbaCliHarness(unittest.TestCase):
             "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
             "FNBA_FAKE_PG_STATE": str(state),
             "FNBA_FAKE_PG_LOG": str(log),
+            "FNBA_CONFIG_DIR": str(self.tmp / "config"),
         }
 
     def fake_pg_log(self, env):
         return Path(env["FNBA_FAKE_PG_LOG"]).read_text(encoding="utf-8")
+
+    def port_registry_rows(self):
+        path = self.tmp / "config" / "worktree-ports"
+        if not path.exists():
+            return []
+        rows = []
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            base_text, slug = line.split("\t")
+            rows.append((int(base_text), slug))
+        return rows
 
     def add_stub_database_yml(self):
         yml = self.repo / "backend" / "config" / "database.yml"
@@ -254,7 +278,11 @@ class FnbaCliTest(FnbaCliHarness):
         (other / "README.md").write_text("other\n")
         git(other, "add", "README.md")
         git(other, "commit", "-m", "init")
-        result = run([str(CLI), "wt", "ft/x"], other)
+        result = run(
+            [str(CLI), "wt", "ft/x"],
+            other,
+            env={"FNBA_CONFIG_DIR": str(self.tmp / "config")},
+        )
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("only works in the fnba-drafter repository", result.stderr)
 
@@ -347,10 +375,15 @@ class FnbaCliTest(FnbaCliHarness):
         self.assertEqual(via_alias.returncode, 0, via_alias.stderr)
         via_remove_alias = self.cli("remove", "ft/one", "-y")
         self.assertEqual(via_remove_alias.returncode, 0, via_remove_alias.stderr)
-        direct = run([str(REPO_ROOT / "bin" / "git-wt"), "ft/two"], self.repo)
+        config_env = {"FNBA_CONFIG_DIR": str(self.tmp / "config")}
+        direct = run(
+            [str(REPO_ROOT / "bin" / "git-wt"), "ft/two"], self.repo, env=config_env
+        )
         self.assertEqual(direct.returncode, 0, direct.stderr)
         direct_rm = run(
-            [str(REPO_ROOT / "bin" / "git-wt-remove"), "ft/two", "-y"], self.repo
+            [str(REPO_ROOT / "bin" / "git-wt-remove"), "ft/two", "-y"],
+            self.repo,
+            env=config_env,
         )
         self.assertEqual(direct_rm.returncode, 0, direct_rm.stderr)
 
@@ -369,6 +402,71 @@ class FnbaCliTest(FnbaCliHarness):
         log = git(expected, "log", "-1", "--pretty=%s").stdout.strip()
         self.assertEqual(log, "on remote branch")
 
+    def test_create_allocates_port_block(self):
+        result = self.cli("wt", "ft/board")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        rows = self.port_registry_rows()
+        self.assertEqual(len(rows), 1, rows)
+        base, slug = rows[0]
+        self.assertGreaterEqual(base, 4100)
+        self.assertEqual(base % 10, 0)
+        self.assertEqual(slug, "ft_board")
+        worktree = self.tmp / "fnba-drafter-worktrees" / "ft-board"
+        backend = (worktree / "backend" / ".env.local").read_text(encoding="utf-8")
+        frontend = (worktree / "frontend" / ".env.local").read_text(encoding="utf-8")
+        self.assertRegex(backend, rf"(?m)^FNBA_PORT_BASE={base}$")
+        self.assertRegex(backend, rf"(?m)^PORT={base}$")
+        self.assertRegex(backend, rf"(?m)^FRONTEND_PORT={base + 1}$")
+        self.assertIn("# Per-worktree port block (managed by fnba-cli wt)", backend)
+        self.assertRegex(frontend, rf"(?m)^VITE_PORT={base + 1}$")
+        self.assertRegex(frontend, rf"(?m)^VITE_API_URL=http://127\.0\.0\.1:{base}$")
+        self.assertIn("# Per-worktree port block (managed by fnba-cli wt)", frontend)
+        self.assertIn(f"Ports: Rails :{base} · Vite :{base + 1}", result.stdout)
+
+    def test_second_worktree_gets_next_block(self):
+        first = self.cli("wt", "ft/board")
+        self.assertEqual(first.returncode, 0, first.stdout + first.stderr)
+        second = self.cli("wt", "ft/other")
+        self.assertEqual(second.returncode, 0, second.stdout + second.stderr)
+        rows = self.port_registry_rows()
+        self.assertEqual(len(rows), 2, rows)
+        bases = []
+        slugs = set()
+        for base, slug in rows:
+            self.assertGreaterEqual(base, 4100)
+            self.assertEqual(base % 10, 0)
+            bases.append(base)
+            slugs.add(slug)
+        self.assertEqual(slugs, {"ft_board", "ft_other"})
+        self.assertEqual(len(set(bases)), 2)
+        self.assertEqual(abs(bases[0] - bases[1]), 10)
+
+    def test_remove_releases_port_block(self):
+        created = self.cli("wt", "ft/board")
+        self.assertEqual(created.returncode, 0, created.stdout + created.stderr)
+        self.assertEqual([slug for _, slug in self.port_registry_rows()], ["ft_board"])
+        removed = self.cli("wt-remove", "ft/board", "-y")
+        self.assertEqual(removed.returncode, 0, removed.stdout + removed.stderr)
+        self.assertNotIn("ft_board", [slug for _, slug in self.port_registry_rows()])
+        self.assertIn("Rails :", removed.stdout)
+        self.assertIn("Released port block :", removed.stdout)
+
+    def test_create_is_idempotent_for_registered_slug(self):
+        config = self.tmp / "config"
+        config.mkdir(parents=True)
+        (config / "worktree-ports").write_text("4120\tft_board\n", encoding="utf-8")
+        result = self.cli("wt", "ft/board")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(self.port_registry_rows(), [(4120, "ft_board")])
+        worktree = self.tmp / "fnba-drafter-worktrees" / "ft-board"
+        backend = (worktree / "backend" / ".env.local").read_text(encoding="utf-8")
+        frontend = (worktree / "frontend" / ".env.local").read_text(encoding="utf-8")
+        self.assertRegex(backend, r"(?m)^FNBA_PORT_BASE=4120$")
+        self.assertRegex(backend, r"(?m)^PORT=4120$")
+        self.assertRegex(backend, r"(?m)^FRONTEND_PORT=4121$")
+        self.assertRegex(frontend, r"(?m)^VITE_PORT=4121$")
+        self.assertRegex(frontend, r"(?m)^VITE_API_URL=http://127\.0\.0\.1:4120$")
+
 
 class FnbaCliWorktreeDbTest(FnbaCliHarness):
     def setUp(self):
@@ -386,7 +484,9 @@ class FnbaCliWorktreeDbTest(FnbaCliHarness):
         self.assertTrue(expected.is_dir(), result.stdout)
         log = self.fake_pg_log(self.pg)
         self.assertNotIn("createdb", log)
-        self.assertFalse((expected / "backend" / ".env.local").exists())
+        env_local = expected / "backend" / ".env.local"
+        text = env_local.read_text(encoding="utf-8") if env_local.exists() else ""
+        self.assertNotIn("FNBA_DB_NAME", text)
         self.assertFalse((expected / "backend" / ".env.test.local").exists())
 
     def test_create_writes_isolated_db_env_files(self):
@@ -403,6 +503,29 @@ class FnbaCliWorktreeDbTest(FnbaCliHarness):
         self.assertIn("createdb", log)
         self.assertIn("fnba_dev_ft_board", result.stdout)
         self.assertIn("fnba_test_ft_board", result.stdout)
+
+    def test_no_db_still_allocates_ports(self):
+        result = self.cli("wt", "ft/board", "--no-db", env=self.pg)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        worktree = self.tmp / "fnba-drafter-worktrees" / "ft-board"
+        backend = (worktree / "backend" / ".env.local").read_text(encoding="utf-8")
+        frontend = (worktree / "frontend" / ".env.local").read_text(encoding="utf-8")
+        self.assertNotIn("FNBA_DB_NAME", backend)
+        self.assertRegex(backend, r"(?m)^FNBA_PORT_BASE=\d+$")
+        self.assertRegex(backend, r"(?m)^PORT=\d+$")
+        self.assertRegex(backend, r"(?m)^FRONTEND_PORT=\d+$")
+        self.assertRegex(frontend, r"(?m)^VITE_PORT=\d+$")
+        self.assertRegex(frontend, r"(?m)^VITE_API_URL=http://127\.0\.0\.1:\d+$")
+        rows = self.port_registry_rows()
+        self.assertEqual(len(rows), 1, rows)
+        base, slug = rows[0]
+        self.assertGreaterEqual(base, 4100)
+        self.assertEqual(base % 10, 0)
+        self.assertEqual(slug, "ft_board")
+        self.assertRegex(backend, rf"(?m)^PORT={base}$")
+        self.assertRegex(backend, rf"(?m)^FRONTEND_PORT={base + 1}$")
+        self.assertNotIn("createdb", self.fake_pg_log(self.pg))
+        self.assertFalse((worktree / "backend" / ".env.test.local").exists())
 
     def test_remove_drops_isolated_databases(self):
         created = self.cli("wt", "ft/board", env=self.pg)
