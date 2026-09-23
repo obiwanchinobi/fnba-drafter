@@ -11,6 +11,7 @@ import TableContainer from '@mui/material/TableContainer'
 import TableHead from '@mui/material/TableHead'
 import TableRow from '@mui/material/TableRow'
 import Typography from '@mui/material/Typography'
+import { useNavigate, useParams } from 'react-router'
 import {
   createMockDraft,
   fetchMockDraft,
@@ -29,9 +30,13 @@ function formatWhen(value: string): string {
 }
 
 export default function MockDraftsPage() {
+  const { id } = useParams<{ id: string }>()
+  const parsedDraftId = id == null ? null : Number(id)
+  const selectedDraftId =
+    parsedDraftId != null && Number.isFinite(parsedDraftId) ? parsedDraftId : null
+  const navigate = useNavigate()
   const [drafts, setDrafts] = useState<MockDraftSummary[]>([])
   const [detail, setDetail] = useState<MockDraft | null>(null)
-  const [selectedDraftId, setSelectedDraftId] = useState<number | null>(null)
   const [selectedSlot, setSelectedSlot] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -87,8 +92,8 @@ export default function MockDraftsPage() {
       const rows = await fetchMockDrafts()
       setDrafts(rows)
       setDetail(created)
-      setSelectedDraftId(created.id)
       setSelectedSlot(null)
+      navigate(`/mock-drafts/${created.id}`)
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to run mock draft')
     } finally {
@@ -141,7 +146,7 @@ export default function MockDraftsPage() {
                     onClick={() => {
                       setSelectedSlot(null)
                       if (detail?.id !== draft.id) setDetail(null)
-                      setSelectedDraftId(draft.id)
+                      navigate(`/mock-drafts/${draft.id}`)
                     }}
                     sx={{ cursor: 'pointer' }}
                     data-testid={`mock-draft-${draft.id}`}
