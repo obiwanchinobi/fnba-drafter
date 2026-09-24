@@ -8,6 +8,9 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [react()],
     server: {
+      // Caddy dials 127.0.0.1 (bin/lib/fnba-wt-ports.sh). Vite's default
+      // localhost bind is IPv6-only here, which makes that proxy a 502.
+      host: '127.0.0.1',
       // A blank VITE_PORT or VITE_API_URL must fall back; || treats "" as missing.
       port: Number(env.VITE_PORT) || 5173,
       proxy: {
