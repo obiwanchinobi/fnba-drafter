@@ -37,6 +37,7 @@ Follow `AGENTS.md`. Map these operations to the current harness; if a required c
 | Operation | Do this |
 |---|---|
 | Dispatch a code row | Spawn a **general-purpose** child with **worktree isolation**. One spawn per row. Grok: `spawn_subagent` with `isolation: "worktree"`. Claude: Agent/Task with `isolation: "worktree"`. Codex: explicitly spawn an isolated-worktree child (do not wait for auto-delegation). |
+| Align child base | Harnesses fork isolation worktrees from different commits (Claude Code forks from the primary checkout's HEAD, not the orchestrator's branch). Never rely on the fork point. Every implementer runs §Base alignment as its first step, before reading or editing code. |
 | Wait | Collect every child in the batch before merging. Grok may `get_command_or_subagent_output`. Never `sleep` / `until` / `pgrep` poll loops. |
 | Ask the user | Harness question tool if available (recommended option first); otherwise ask in chat and wait. Nested (no question tool): halt with a `DECISION NEEDED` block. Elapsed time is not an answer. |
 | Merge | `git cherry-pick <verified-sha>` only. Do not `grok worktree apply`, fast-forward, merge, rebase, or squash. |
@@ -152,6 +153,7 @@ One parent message containing one spawn per batch row.
 
   - Absolute seed path, basename, row id, item, `seed_doc_kind`, `batch_base_sha`.
   - "You are in an isolated git worktree. Commit on this worktree's branch. Do not push, switch branches, merge, rebase, amend, or touch anything outside this worktree. Return: short SHA, branch name, worktree path, one-line summary."
+  - The **Base alignment** block below, verbatim, with `<batch_base_sha>` filled in (on a retry, the `retry_base_sha`).
   - Read the tracking row, the matching `## R<n>:` section, `AGENTS.md`, and this skill. For product, scoring, ranking, or draft-strategy rows, read `docs/context/product-vision.md` first.
   - Informative constraints from the plan, listed as still in force.
   - **Ambiguity:** no question tool. If implementation cannot proceed from the plan and codebase, make no commit; return a self-contained `DECISION NEEDED` block (file:line facts, options, consequences, recommendation). Never refer to "the file above".
@@ -185,9 +187,17 @@ Required in the body when a body is warranted: cite code (path:line, helpers, th
 
 The durable `Refs:` trailer is the only allowed doc reference.
 
+#### Base alignment (transcribe into every dispatch prompt)
+
+Do this first, before reading or editing code. The harness may have forked this worktree from a different commit than the base you were given.
+
+1. `git rev-parse HEAD`. If it equals `<batch_base_sha>`, continue with the row.
+2. Otherwise `git status --porcelain` must be empty and `git cat-file -e <batch_base_sha>^{commit}` must succeed. If either fails, make no commit and return `DECISION NEEDED` with both outputs.
+3. `git reset --hard <batch_base_sha>`, then confirm `git rev-parse HEAD` equals `<batch_base_sha>`. This is the only permitted `git reset`, and only at this step. It moves this worktree's own branch and touches nothing outside it.
+
 #### Git safety (transcribe into every dispatch prompt)
 
-Forbidden: `git stash` (any); `git checkout --` / `git restore <file>` (working tree); `git reset`; `git clean -f`; `git commit --amend` / `--no-verify`; `git push`; `git rebase` / `merge` / `cherry-pick`; switching branches.
+Forbidden: `git stash` (any); `git checkout --` / `git restore <file>` (working tree); `git reset` (except the one §Base alignment step); `git clean -f`; `git commit --amend` / `--no-verify`; `git push`; `git rebase` / `merge` / `cherry-pick`; switching branches.
 
 Allowed: read-only git; `git add <specific files>`; `git commit -m …`; `git restore --staged <file>` for the worker's own mistaken stage.
 
@@ -212,7 +222,7 @@ Apply on the orchestrator branch, one conventional commit per row (`docs(skills)
 3. **Scope.** `git -C <worktree-path> diff --name-only <batch_base_sha>..HEAD` versus declared `File(s)`. A declared path matches that file or files under it. Co-located test companions of declared production files are in-scope (see §Scope). If a non-companion delta remains, ask: Accept and cherry-pick (recommended) / Reject and re-dispatch (counts as the one retry) / Inspect (STOP, leave worktree). Nested: `DECISION NEEDED` with the same options.
 4. **Message.** Durable: exact trailer line present, else STOP. Ephemeral: any `Refs: send-it row` line → STOP. Hygiene violation → auto-heal in the worktree: strip `(R\d+)` subject suffixes and body lines that name the doc basename, `row N`, or requirement ids outside a `Refs:` trailer; `git commit --amend -m`; re-check count == 1. Still dirty after strip → STOP. Trailer-state errors are never stripped.
 5. **Cherry-pick** (skip if `worktree_skipped`): `git cherry-pick <verified-sha>` (no `-x`).
-6. **Conflict → auto-heal.** `git cherry-pick --abort`. Cleanup that worktree (operations table). If this row already retried once → STOP (semantic conflict): report files and remaining batch worktrees. Else `retry_base_sha = git rev-parse HEAD`, dispatch one fresh worktree from current HEAD, re-verify using `retry_base_sha` in place of `batch_base_sha`, cherry-pick. Second conflict → STOP. If the retry reports no diff: write `noop-via-<id>` (or `noop`), cleanup, continue — no empty commit.
+6. **Conflict → auto-heal.** `git cherry-pick --abort`. Cleanup that worktree (operations table). If this row already retried once → STOP (semantic conflict): report files and remaining batch worktrees. Else `retry_base_sha = git rev-parse HEAD`, dispatch one fresh worktree whose §Base alignment targets `retry_base_sha`, re-verify using `retry_base_sha` in place of `batch_base_sha`, cherry-pick. Second conflict → STOP. If the retry reports no diff: write `noop-via-<id>` (or `noop`), cleanup, continue — no empty commit.
 7. **Post-merge.** Durable: nothing (trailer is the checkpoint). Ephemeral: write the short SHA into that row's `Commit` cell. Do not commit the doc.
 8. **Cleanup** the merged (or retry) worktree unless `worktree_skipped`. Failures are logged; continue.
 9. Re-check stash baseline. Drift → STOP.
