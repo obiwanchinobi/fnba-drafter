@@ -158,9 +158,15 @@ export default function WinningWeightsPage() {
         </Stack>
         {error ? <Alert severity="error">{error}</Alert> : null}
         {result ? (
-          <Typography variant="body2" color="text.secondary">
-            {`Last run ${formatWhen(result.created_at)}, projections imported ${formatWhen(result.projection_imported_at)}`}
-          </Typography>
+          <Stack spacing={0.5}>
+            <Typography variant="body2" color="text.secondary">
+              {`Last run ${formatWhen(result.created_at)}, projections imported ${formatWhen(result.projection_imported_at)}`}
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Running again replaces these results and the Draft slot 1-8
+              collections.
+            </Typography>
+          </Stack>
         ) : null}
         {loading ? (
           <Typography>Loading winning weights…</Typography>

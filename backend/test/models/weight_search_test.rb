@@ -71,18 +71,18 @@ class WeightSearchTest < ActiveSupport::TestCase
 
   test "the same seed gives the same weights, scores and drafts, across plateau restarts" do
     budget = WeightHillClimb::PLATEAU_RESTART + 15
-    first = WeightSearch.run!(budget: budget, seed: SEED)
+    first = run_snapshots(WeightSearch.run!(budget: budget, seed: SEED))
     second = WeightSearch.run!(budget: budget, seed: SEED)
 
-    assert_equal run_snapshots(first), run_snapshots(second)
+    assert_equal first, run_snapshots(second)
     assert_equal budget, second.budget
   end
 
   test "a different seed searches differently" do
-    first = WeightSearch.run!(budget: BUDGET, seed: SEED)
-    second = WeightSearch.run!(budget: BUDGET, seed: SEED + 1)
+    first = run_snapshots(WeightSearch.run!(budget: BUDGET, seed: SEED))
+    second = run_snapshots(WeightSearch.run!(budget: BUDGET, seed: SEED + 1))
 
-    refute_equal run_snapshots(first).map { |run| run["weights"] }, run_snapshots(second).map { |run| run["weights"] }
+    refute_equal first.map { |run| run["weights"] }, second.map { |run| run["weights"] }
   end
 
   test "run! without a seed stores a generated seed that fits a bigint" do
@@ -109,6 +109,29 @@ class WeightSearchTest < ActiveSupport::TestCase
     second.runs.each do |run|
       assert_equal run.weights, WeightSet.find(ids[run.user_slot - 1]).weights
     end
+  end
+
+  test "a second run replaces the saved search and its runs" do
+    first = WeightSearch.run!(budget: BUDGET, seed: SEED)
+    first_run_ids = first.runs.pluck(:id)
+    second = WeightSearch.run!(budget: BUDGET, seed: SEED + 1)
+
+    assert_equal [ second.id ], WeightSearch.pluck(:id)
+    assert_equal SEED + 1, WeightSearch.sole.seed
+    assert_equal 8, WeightSearchRun.count
+    assert_equal [ second.id ], WeightSearchRun.distinct.pluck(:weight_search_id)
+    assert_empty WeightSearchRun.where(id: first_run_ids)
+  end
+
+  test "a run that raises BoardTooSmall leaves the prior search untouched" do
+    prior = WeightSearch.run!(budget: BUDGET, seed: SEED)
+    prior_runs = run_snapshots(prior)
+    PlayerProjection.where(source: "espn").order(:id).limit(PLAYER_COUNT - 127).destroy_all
+
+    assert_raises(MockDraft::BoardTooSmall) { WeightSearch.run!(budget: BUDGET, seed: SEED + 1) }
+    assert_equal [ prior.id ], WeightSearch.pluck(:id)
+    assert_equal SEED, WeightSearch.sole.seed
+    assert_equal prior_runs, run_snapshots(prior)
   end
 
   test "run! raises BoardTooSmall and saves nothing when fewer than 128 players are draftable" do

@@ -24,7 +24,10 @@ class WeightSearch < ApplicationRecord
     climb = WeightHillClimb.new(board, projections.index_by(&:player_id), Random.new(seed))
     bests = 1.upto(League::TEAM_COUNT).map { |user_slot| [ user_slot, climb.best_for(user_slot, budget) ] }
 
+    # Only one search is kept. Replacing it after the climb, in one transaction,
+    # leaves the previous result intact when the climb or the save fails.
     transaction do
+      destroy_all
       create!(
         budget: budget,
         seed: seed,

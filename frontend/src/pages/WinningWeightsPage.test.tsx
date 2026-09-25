@@ -131,6 +131,7 @@ test('explains the search and shows an empty state when nothing is saved', async
   expect(await screen.findByText('No winning weights yet.')).toBeInTheDocument()
   expect(screen.queryByText('Loading winning weights…')).not.toBeInTheDocument()
   expect(screen.queryByText(/^Last run/)).not.toBeInTheDocument()
+  expect(screen.queryByText(/^Running again replaces/)).not.toBeInTheDocument()
   expect(
     screen.getByRole('button', { name: 'Find winning weights' }),
   ).toBeEnabled()
@@ -153,6 +154,11 @@ test('loads the saved search on mount with when it ran and its projection import
   expect(
     screen.getByText(
       `Last run ${when(SAVED_AT)}, projections imported ${when(IMPORTED_AT)}`,
+    ),
+  ).toBeInTheDocument()
+  expect(
+    screen.getByText(
+      'Running again replaces these results and the Draft slot 1-8 collections.',
     ),
   ).toBeInTheDocument()
   expect(screen.queryByText('No winning weights yet.')).not.toBeInTheDocument()
