@@ -7,16 +7,62 @@ module Api
       full_name injury_status nba_team overall_pick player_id positions roster_slot round slot team z_total z_weighted
     ].freeze
 
-    test "POST /api/weight_searches runs the search and returns one drillable run per slot" do
-      130.times { |index| create_draftable(index) }
+    test "GET /api/weight_search returns 404 when no search has been saved" do
+      get "/api/weight_search"
 
-      post "/api/weight_searches", params: { budget: 5, seed: 11 }, as: :json
+      assert_response :not_found
+    end
+
+    test "GET /api/weight_search returns the latest saved search with runs by slot and hydrated picks" do
+      players = Array.new(3) { |index| create_draftable(index).player }
+      picks = players.each_with_index.map { |player, index| stub_pick(player, index + 1) }.reverse
+      save_search(seed: 1, created_at: 2.days.ago, runs: [ stub_run(1, picks) ])
+      latest = save_search(seed: 2, runs: [ 2, 1 ].map { |user_slot| stub_run(user_slot, picks) })
+
+      ActiveRecord::Base.uncached do
+        assert_queries_match(/FROM ["']players["']/, count: 1) do
+          get "/api/weight_search"
+        end
+      end
 
       assert_response :success
       body = JSON.parse(response.body)
+      assert_equal 2, body["seed"]
+      assert_equal 5, body["budget"]
+      assert_equal "2026-09-01T00:00:00.000Z", body["projection_imported_at"]
+      assert_equal latest.created_at.utc.iso8601(3), body["created_at"]
+      assert_equal [ 1, 2 ], body["runs"].map { |run| run["user_slot"] }
+      run = body["runs"].first
+      assert_equal RUN_KEYS, run.keys.sort
+      assert_equal "Draft slot 1", run["weight_set_name"]
+      assert_equal WeightSet::CATEGORIES.index_with { 1.0 }, run["weights"]
+      assert_equal 1, run["rank"]
+      assert_equal 100.5, run["roto_points"]
+      assert_equal 2.5, run["margin"]
+      assert_equal true, run["won"]
+      assert_equal MockDraft.draft_order_for(1), run["draft_order"]
+      assert_equal [ { "team" => League::USER_TEAM, "rank" => 1, "roto_points" => 100.5 } ], run["standings"]
+      assert_equal [ 1, 2, 3 ], run["picks"].map { |pick| pick["overall_pick"] }
+      assert_equal players.map(&:full_name), run["picks"].map { |pick| pick["full_name"] }
+      run["picks"].each { |pick| assert_equal PICK_KEYS, pick.keys.sort }
+      assert_equal "DEN", run["picks"].first["nba_team"]
+      assert_equal 2.5, run["picks"].first["z_total"]
+      assert_nil run["picks"].first["z_weighted"]
+    end
+
+    test "POST /api/weight_search runs and saves the search and returns it with 201" do
+      130.times { |index| create_draftable(index) }
+
+      post "/api/weight_search", params: { budget: 5, seed: 11 }, as: :json
+
+      assert_response :created
+      body = JSON.parse(response.body)
+      search = WeightSearch.sole
+      assert_equal 8, search.runs.count
       assert_equal 5, body["budget"]
       assert_equal 11, body["seed"]
-      assert body["projection_imported_at"].present?
+      assert_equal "2026-09-01T00:00:00.000Z", body["projection_imported_at"]
+      assert_equal search.created_at.utc.iso8601(3), body["created_at"]
       refute body.key?("slots")
       assert_equal (1..8).to_a, body["runs"].map { |run| run["user_slot"] }
       body["runs"].each do |run|
@@ -24,6 +70,8 @@ module Api
         assert_equal "Draft slot #{run['user_slot']}", run["weight_set_name"]
         assert_equal WeightSet.find_by!(name: run["weight_set_name"]).weights, run["weights"]
         assert_includes [ true, false ], run["won"]
+        assert_kind_of Numeric, run["roto_points"]
+        assert_kind_of Numeric, run["margin"]
         assert_equal MockDraft.draft_order_for(run["user_slot"]), run["draft_order"]
         assert_equal 8, run["standings"].size
         assert_equal run["rank"], run["standings"].find { |row| row["team"] == League::USER_TEAM }["rank"]
@@ -35,40 +83,23 @@ module Api
       player = Player.find(pick["player_id"])
       assert_equal player.full_name, pick["full_name"]
       assert_equal player.positions, pick["positions"]
-      assert_equal "DEN", pick["nba_team"]
       assert_kind_of Float, pick["z_total"]
       assert_kind_of Float, pick["z_weighted"]
       assert_equal 8, WeightSet.count
-    end
 
-    test "POST /api/weight_searches hydrates every pick's player with one query" do
-      players = Array.new(3) { |index| create_draftable(index).player }
-      runs = (1..2).map do |user_slot|
-        stub_run(user_slot, players.each_with_index.map { |player, index| stub_pick(player, index + 1) })
-      end
-
-      ActiveRecord::Base.uncached do
-        with_run_result({ budget: 5, seed: 1, projection_imported_at: Time.utc(2026, 9, 1), runs: runs }) do
-          assert_queries_match(/FROM ["']players["']/, count: 1) do
-            post "/api/weight_searches", params: { budget: 5 }, as: :json
-          end
-        end
-      end
-
+      get "/api/weight_search"
       assert_response :success
-      body = JSON.parse(response.body)
-      assert_equal [ 1, 2 ], body["runs"].map { |run| run["user_slot"] }
-      assert_equal players.map(&:full_name), body["runs"].last["picks"].map { |pick| pick["full_name"] }
-      assert_equal 2.5, body["runs"].first["picks"].first["z_total"]
-      assert_nil body["runs"].first["picks"].first["z_weighted"]
+      assert_equal body, JSON.parse(response.body)
     end
 
-    test "POST /api/weight_searches with too small a board returns 422 board_too_small" do
-      post "/api/weight_searches", params: { budget: 5 }, as: :json
+    test "POST /api/weight_search with too small a board returns 422 board_too_small and saves nothing" do
+      post "/api/weight_search", params: { budget: 5 }, as: :json
 
       assert_response :unprocessable_entity
       assert_equal({ "error" => "board_too_small" }, JSON.parse(response.body))
       assert_equal 0, WeightSet.count
+      assert_equal 0, WeightSearch.count
+      assert_equal 0, WeightSearchRun.count
     end
 
     test "budget is clamped to 1..MAX_BUDGET and defaults when absent or not an integer" do
@@ -76,9 +107,16 @@ module Api
       assert_equal 1, run_args_for({ budget: 0 })[:budget]
       assert_equal WeightSearch::DEFAULT_BUDGET, run_args_for({})[:budget]
       assert_equal WeightSearch::DEFAULT_BUDGET, run_args_for({ budget: "lots" })[:budget]
+    end
+
+    test "seed is passed through only when it is an integer that fits a bigint" do
       assert_nil run_args_for({})[:seed]
       assert_equal 7, run_args_for({ seed: 7 })[:seed]
+      assert_equal (1 << 63) - 1, run_args_for({ seed: (1 << 63) - 1 })[:seed]
       assert_nil run_args_for({ seed: "seven" })[:seed]
+      assert_nil run_args_for({ seed: 1 << 63 })[:seed]
+      assert_nil run_args_for({ seed: -1 })[:seed]
+      assert_nil run_args_for({ seed: 1 << 100 })[:seed]
     end
 
     private
@@ -86,23 +124,29 @@ module Api
       def run_args_for(payload)
         captured = nil
         original = WeightSearch.method(:run!)
+        stub_search = method(:save_search)
         WeightSearch.define_singleton_method(:run!) do |**kwargs|
           captured = kwargs
-          { budget: kwargs[:budget], seed: kwargs[:seed], projection_imported_at: nil, runs: [] }
+          stub_search.call(seed: 1, runs: [])
         end
-        post "/api/weight_searches", params: payload, as: :json
-        assert_response :success
+        post "/api/weight_search", params: payload, as: :json
+        assert_response :created
         captured
       ensure
         WeightSearch.define_singleton_method(:run!, original)
       end
 
-      def with_run_result(result)
-        original = WeightSearch.method(:run!)
-        WeightSearch.define_singleton_method(:run!) { |**| result }
-        yield
-      ensure
-        WeightSearch.define_singleton_method(:run!, original)
+      def save_search(seed:, runs:, created_at: Time.current)
+        WeightSearch.create!(
+          budget: 5,
+          seed: seed,
+          source: "espn",
+          season: Espn::SEASON,
+          projection_imported_at: Time.utc(2026, 9, 1),
+          user_team: League::USER_TEAM,
+          created_at: created_at,
+          runs: runs.map { |attributes| WeightSearchRun.new(attributes) }
+        )
       end
 
       def stub_run(user_slot, picks)
@@ -111,11 +155,11 @@ module Api
           weight_set_name: "Draft slot #{user_slot}",
           weights: WeightSet::CATEGORIES.index_with { 1.0 },
           rank: 1,
-          roto_points: 100.0,
-          margin: 2.0,
+          roto_points: 100.5,
+          margin: 2.5,
           won: true,
           draft_order: MockDraft.draft_order_for(user_slot),
-          standings: [],
+          standings: [ { "team" => League::USER_TEAM, "rank" => 1, "roto_points" => 100.5 } ],
           picks: picks
         }
       end

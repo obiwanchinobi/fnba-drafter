@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import Alert from '@mui/material/Alert'
 import Button from '@mui/material/Button'
 import Container from '@mui/material/Container'
@@ -12,8 +12,9 @@ import TableHead from '@mui/material/TableHead'
 import TableRow from '@mui/material/TableRow'
 import Typography from '@mui/material/Typography'
 import {
+  fetchWeightSearch,
   runWeightSearch,
-  type WeightSearch,
+  type SavedWeightSearch,
   type WeightSearchRun,
 } from '../api/weightSearches.ts'
 import MockDraftBoard from '../components/MockDraftBoard.tsx'
@@ -43,6 +44,12 @@ const WEIGHT_LABELS: Record<ScoredCat, string> = {
   td: 'TD',
   pts: 'PTS',
   ppm: 'PPM',
+}
+
+function formatWhen(value: string): string {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  return date.toLocaleString()
 }
 
 function formatWeight(value: number | undefined): string {
@@ -82,10 +89,31 @@ function RunWeights({ run }: { run: WeightSearchRun }) {
 }
 
 export default function WinningWeightsPage() {
+  const [loading, setLoading] = useState(true)
   const [searching, setSearching] = useState(false)
-  const [result, setResult] = useState<WeightSearch | null>(null)
+  const [result, setResult] = useState<SavedWeightSearch | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [selectedSlot, setSelectedSlot] = useState<number | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    fetchWeightSearch()
+      .then((saved) => {
+        if (!cancelled) setResult(saved)
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return
+        setError(
+          err instanceof Error ? err.message : 'Failed to load winning weights',
+        )
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   async function handleFindWeights() {
     setSearching(true)
@@ -122,7 +150,7 @@ export default function WinningWeightsPage() {
           <Button
             variant="contained"
             onClick={() => void handleFindWeights()}
-            disabled={searching}
+            disabled={searching || loading}
             loading={searching}
           >
             Find winning weights
@@ -130,6 +158,13 @@ export default function WinningWeightsPage() {
         </Stack>
         {error ? <Alert severity="error">{error}</Alert> : null}
         {result ? (
+          <Typography variant="body2" color="text.secondary">
+            {`Last run ${formatWhen(result.created_at)}, projections imported ${formatWhen(result.projection_imported_at)}`}
+          </Typography>
+        ) : null}
+        {loading ? (
+          <Typography>Loading winning weights…</Typography>
+        ) : result ? (
           <WeightSearchResults
             result={result}
             userTeam={USER_TEAM}

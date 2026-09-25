@@ -6,43 +6,66 @@ class WeightSearchTest < ActiveSupport::TestCase
 
   BUDGET = 25
   SEED = 20_260_926
+  RUN_SNAPSHOT_KEYS = %w[
+    user_slot weight_set_name weights rank roto_points margin won draft_order standings picks
+  ].freeze
 
   setup do
     create_search_board
   end
 
-  test "run! returns one run per Team Chino slot and saves Draft slot N weight sets" do
-    result = WeightSearch.run!(budget: BUDGET, seed: SEED)
+  test "run! saves the search with one run per Team Chino slot and Draft slot N weight sets" do
+    search = WeightSearch.run!(budget: BUDGET, seed: SEED)
 
-    assert_equal BUDGET, result[:budget]
-    assert_equal SEED, result[:seed]
-    assert_equal IMPORTED_AT, result[:projection_imported_at]
-    assert_equal (1..8).to_a, result[:runs].map { |run| run[:user_slot] }
+    assert search.persisted?
+    assert_equal 1, WeightSearch.count
+    assert_equal 8, WeightSearchRun.count
+    search = WeightSearch.find(search.id)
+    assert_equal BUDGET, search.budget
+    assert_equal SEED, search.seed
+    assert_equal "espn", search.source
+    assert_equal Espn::SEASON, search.season
+    assert_equal IMPORTED_AT, search.projection_imported_at
+    assert_equal League::USER_TEAM, search.user_team
+    runs = search.runs.order(:user_slot).to_a
+    assert_equal (1..8).to_a, runs.map(&:user_slot)
 
-    result[:runs].each do |run|
-      name = "Draft slot #{run[:user_slot]}"
-      assert_equal name, run[:weight_set_name]
-      assert_equal WeightSet::CATEGORIES.sort, run[:weights].keys.sort
-      assert_equal run[:weights], WeightSet.find_by!(name: name).weights
-      refute run.key?(:evaluations)
+    runs.each do |run|
+      name = "Draft slot #{run.user_slot}"
+      assert_equal name, run.weight_set_name
+      assert_equal WeightSet::CATEGORIES.sort, run.weights.keys.sort
+      assert_equal run.weights, WeightSet.find_by!(name: name).weights
     end
 
     names = WeightSet.order(:name).pluck(:name)
     assert_equal (1..8).map { |slot| "Draft slot #{slot}" }, names
   end
 
-  test "each run carries its draft order, 128 picks and the standings behind its score" do
-    result = WeightSearch.run!(budget: BUDGET, seed: SEED)
+  test "each saved run keeps its weights when the Draft slot collection is edited later" do
+    search = WeightSearch.run!(budget: BUDGET, seed: SEED)
+    run = search.runs.find_by!(user_slot: 3)
+    saved = run.weights
 
-    result[:runs].each do |run|
-      assert_equal MockDraft.draft_order_for(run[:user_slot]), run[:draft_order]
-      assert_equal 128, run[:picks].size
-      assert_equal replay_picks(run[:user_slot], run[:weights]).map { |pick| pick[:player_id] },
-        run[:picks].map { |pick| pick["player_id"] }
-      assert_equal replay(run[:user_slot], run[:weights]), run[:standings]
-      assert_equal run[:rank], chino_row(run[:standings])["rank"]
-      assert_in_delta chino_row(run[:standings])["roto_points"] - best_other_points(run[:standings]), run[:margin], 1e-9
-      assert_equal run[:margin].positive?, run[:won]
+    WeightSet.find_by!(name: "Draft slot 3").update!(weights: WeightSet::CATEGORIES.index_with { 4.95 })
+
+    assert_equal saved, run.reload.weights
+    refute_equal WeightSet.find_by!(name: "Draft slot 3").weights, run.weights
+  end
+
+  test "each saved run carries its draft order, 128 picks and the standings behind its score" do
+    search = WeightSearch.run!(budget: BUDGET, seed: SEED)
+
+    WeightSearch.find(search.id).runs.order(:user_slot).each do |run|
+      assert_equal MockDraft.draft_order_for(run.user_slot), run.draft_order
+      assert_equal 128, run.picks.size
+      assert_equal replay_picks(run.user_slot, run.weights).map { |pick| pick[:player_id] },
+        run.picks.map { |pick| pick["player_id"] }
+      assert_equal replay(run.user_slot, run.weights), run.standings
+      assert_equal run.rank, chino_row(run.standings)["rank"]
+      assert_in_delta chino_row(run.standings)["roto_points"], run.roto_points.to_f, 1e-9
+      assert_in_delta chino_row(run.standings)["roto_points"] - best_other_points(run.standings),
+        run.margin.to_f, 1e-9
+      assert_equal run.margin.positive?, run.won
     end
   end
 
@@ -51,8 +74,24 @@ class WeightSearchTest < ActiveSupport::TestCase
     first = WeightSearch.run!(budget: budget, seed: SEED)
     second = WeightSearch.run!(budget: budget, seed: SEED)
 
-    assert_equal first[:runs], second[:runs]
-    assert_equal budget, second[:budget]
+    assert_equal run_snapshots(first), run_snapshots(second)
+    assert_equal budget, second.budget
+  end
+
+  test "a different seed searches differently" do
+    first = WeightSearch.run!(budget: BUDGET, seed: SEED)
+    second = WeightSearch.run!(budget: BUDGET, seed: SEED + 1)
+
+    refute_equal run_snapshots(first).map { |run| run["weights"] }, run_snapshots(second).map { |run| run["weights"] }
+  end
+
+  test "run! without a seed stores a generated seed that fits a bigint" do
+    search = WeightSearch.run!(budget: 1)
+
+    seed = WeightSearch.find(search.id).seed
+    assert_kind_of Integer, seed
+    assert_operator seed, :>=, 0
+    assert_operator seed, :<, 1 << 63
   end
 
   test "a second run updates the Draft slot weight sets instead of duplicating them" do
@@ -67,8 +106,8 @@ class WeightSearchTest < ActiveSupport::TestCase
     assert_equal ids, slot_weight_set_ids
     assert_includes ids, existing.id
     assert_equal WeightSet::CATEGORIES.index_with { 2.0 }, other.reload.weights
-    second[:runs].each do |run|
-      assert_equal run[:weights], WeightSet.find(ids[run[:user_slot] - 1]).weights
+    second.runs.each do |run|
+      assert_equal run.weights, WeightSet.find(ids[run.user_slot - 1]).weights
     end
   end
 
@@ -77,10 +116,16 @@ class WeightSearchTest < ActiveSupport::TestCase
 
     assert_raises(MockDraft::BoardTooSmall) { WeightSearch.run!(budget: BUDGET, seed: SEED) }
     assert_equal 0, WeightSet.count
+    assert_equal 0, WeightSearch.count
+    assert_equal 0, WeightSearchRun.count
   end
 
   private
     def slot_weight_set_ids
       (1..8).map { |slot| WeightSet.where("lower(name) = ?", "draft slot #{slot}").pick(:id) }
+    end
+
+    def run_snapshots(search)
+      WeightSearch.find(search.id).runs.order(:user_slot).map { |run| run.attributes.slice(*RUN_SNAPSHOT_KEYS) }
     end
 end
