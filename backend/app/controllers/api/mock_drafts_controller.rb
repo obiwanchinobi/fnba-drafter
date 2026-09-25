@@ -1,5 +1,7 @@
 module Api
   class MockDraftsController < ApplicationController
+    include DraftPickJson
+
     def index
       drafts = MockDraft.includes(:runs).order(created_at: :desc, id: :desc)
       render json: drafts.map { |draft| serialize_summary(draft) }
@@ -111,26 +113,8 @@ module Api
           "id" => run.id,
           "draft_order" => run.draft_order,
           "standings" => run.standings,
-          "picks" => run.picks.sort_by(&:overall_pick).map { |pick| serialize_pick(pick) }
+          "picks" => run.picks.sort_by(&:overall_pick).map { |pick| draft_pick_json(pick.attributes, pick.player) }
         )
-      end
-
-      def serialize_pick(pick)
-        player = pick.player
-        {
-          "player_id" => pick.player_id,
-          "full_name" => player.full_name,
-          "positions" => player.positions,
-          "nba_team" => player.nba_team,
-          "injury_status" => player.injury_status,
-          "round" => pick.round,
-          "slot" => pick.slot,
-          "overall_pick" => pick.overall_pick,
-          "team" => pick.team,
-          "roster_slot" => pick.roster_slot,
-          "z_total" => pick.z_total.to_f,
-          "z_weighted" => pick.z_weighted.nil? ? nil : pick.z_weighted.to_f
-        }
       end
 
       def winners_of(run)

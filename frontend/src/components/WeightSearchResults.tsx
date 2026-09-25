@@ -12,6 +12,8 @@ import type { WeightSearch } from '../api/weightSearches.ts'
 type Props = {
   result: WeightSearch
   userTeam: string
+  selectedSlot: number | null
+  onSelectSlot: (userSlot: number) => void
 }
 
 function formatNumber(value: number): string {
@@ -30,7 +32,12 @@ function outcome(margin: number): string {
   return 'Loses'
 }
 
-export default function WeightSearchResults({ result, userTeam }: Props) {
+export default function WeightSearchResults({
+  result,
+  userTeam,
+  selectedSlot,
+  onSelectSlot,
+}: Props) {
   return (
     <Stack spacing={1}>
       <Typography variant="body2" color="text.secondary">
@@ -38,7 +45,8 @@ export default function WeightSearchResults({ result, userTeam }: Props) {
         by the found collection; the other seven teams use unweighted Total-Z.
         Saved as &quot;Draft slot 1&quot; to &quot;Draft slot 8&quot;. A
         projected win assumes opponents draft strictly by Total-Z, so treat a
-        thin margin as a coin flip, not a guarantee.
+        thin margin as a coin flip, not a guarantee. Select a slot to see its
+        weights, draft board and standings.
       </Typography>
       <TableContainer component={Paper} variant="outlined">
         <Table size="small" aria-label="Winning weights by slot">
@@ -53,19 +61,23 @@ export default function WeightSearchResults({ result, userTeam }: Props) {
             </TableRow>
           </TableHead>
           <TableBody>
-            {result.slots.map((slot) => (
+            {result.runs.map((run) => (
               <TableRow
-                key={slot.user_slot}
-                data-testid={`weight-search-slot-${slot.user_slot}`}
+                key={run.user_slot}
+                hover
+                selected={selectedSlot === run.user_slot}
+                onClick={() => onSelectSlot(run.user_slot)}
+                sx={{ cursor: 'pointer' }}
+                data-testid={`weight-search-slot-${run.user_slot}`}
               >
-                <TableCell>{slot.user_slot}</TableCell>
-                <TableCell>{slot.weight_set.name}</TableCell>
-                <TableCell align="right">{slot.rank}</TableCell>
+                <TableCell>{run.user_slot}</TableCell>
+                <TableCell>{run.weight_set_name}</TableCell>
+                <TableCell align="right">{run.rank}</TableCell>
                 <TableCell align="right">
-                  {formatNumber(slot.roto_points)}
+                  {formatNumber(run.roto_points)}
                 </TableCell>
-                <TableCell align="right">{formatMargin(slot.margin)}</TableCell>
-                <TableCell>{outcome(slot.margin)}</TableCell>
+                <TableCell align="right">{formatMargin(run.margin)}</TableCell>
+                <TableCell>{outcome(run.margin)}</TableCell>
               </TableRow>
             ))}
           </TableBody>

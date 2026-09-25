@@ -2,6 +2,7 @@ import '@testing-library/jest-dom/vitest'
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { ThemeProvider } from '@mui/material/styles'
 import { afterEach, expect, test, vi } from 'vitest'
+import { DEFAULT_WEIGHTS } from '../lib/catWeights.ts'
 import theme from '../theme.ts'
 import WinningWeightsPage from './WinningWeightsPage.tsx'
 
@@ -24,25 +25,61 @@ function weightSearchResult() {
     budget: 500,
     seed: 42,
     projection_imported_at: '2026-09-22T03:00:00.000Z',
-    slots: Array.from({ length: 8 }, (_, index) => {
+    runs: Array.from({ length: 8 }, (_, index) => {
       const n = index + 1
       const margin = n === 2 ? -1.5 : 3
       return {
         user_slot: n,
-        weight_set: {
-          id: 100 + n,
-          name: `Draft slot ${n}`,
-          weights: { blk: 1 },
-          updated_at: '2026-09-26T00:00:00.000Z',
-        },
+        weight_set_name: `Draft slot ${n}`,
+        weights: { ...DEFAULT_WEIGHTS, blk: 2.5 + n / 100, to: 0.35 },
         rank: margin > 0 ? 1 : 3,
         roto_points: 90 + margin,
         margin,
         won: margin > 0,
-        evaluations: 500,
+        draft_order: ['Rival Team', 'Other Team', 'Team Chino'],
+        standings: [
+          {
+            team: 'Team Chino',
+            roto_points: 90 + margin,
+            rank: margin > 0 ? 1 : 3,
+            cats: { pts: { value: 2000, points: 8 } },
+          },
+          {
+            team: 'Rival Team',
+            roto_points: 90,
+            rank: 2,
+            cats: { pts: { value: 1900, points: 7 } },
+          },
+        ],
+        picks: [
+          {
+            overall_pick: 3,
+            round: 1,
+            slot: 3,
+            team: 'Team Chino',
+            player_id: 100 + n,
+            full_name: `Slot${n} Center`,
+            positions: ['C'],
+            nba_team: 'DEN',
+            injury_status: null,
+            roster_slot: 'C',
+            z_total: 4.25,
+            z_weighted: 7.5,
+          },
+        ],
       }
     }),
   }
+}
+
+async function runSearch(result: ReturnType<typeof weightSearchResult>) {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => ({ ok: true, json: async () => result })),
+  )
+  renderPage()
+  fireEvent.click(screen.getByRole('button', { name: 'Find winning weights' }))
+  await screen.findByTestId('weight-search-slot-1')
 }
 
 test('explains the search and shows an empty state before the first run', () => {
@@ -137,4 +174,57 @@ test('a failed weight search shows the error alert', async () => {
   expect(
     screen.getByRole('button', { name: 'Find winning weights' }),
   ).toBeEnabled()
+})
+
+test('shows no drilldown until a slot is selected', async () => {
+  await runSearch(weightSearchResult())
+
+  expect(
+    screen.queryByRole('table', { name: 'Mock draft board' }),
+  ).not.toBeInTheDocument()
+  expect(screen.queryByRole('heading', { name: /^Slot / })).not.toBeInTheDocument()
+})
+
+test('clicking slot 3 shows its weights, draft board and standings', async () => {
+  await runSearch(weightSearchResult())
+
+  fireEvent.click(screen.getByTestId('weight-search-slot-3'))
+
+  expect(screen.getByRole('heading', { name: 'Slot 3' })).toBeInTheDocument()
+  expect(screen.getByTestId('weight-search-slot-3')).toHaveClass('Mui-selected')
+
+  const weights = screen.getByRole('table', { name: 'Draft slot 3 weights' })
+  expect(within(weights).getAllByRole('columnheader')).toHaveLength(19)
+  expect(within(weights).getByRole('columnheader', { name: 'OREB' })).toBeInTheDocument()
+  expect(within(weights).getByRole('columnheader', { name: 'DREB' })).toBeInTheDocument()
+  expect(within(weights).queryByRole('columnheader', { name: 'REB' })).not.toBeInTheDocument()
+  expect(within(weights).getByText('2.53')).toBeInTheDocument()
+  expect(within(weights).getByText('0.35')).toBeInTheDocument()
+  expect(within(weights).queryByRole('textbox')).not.toBeInTheDocument()
+
+  const board = screen.getByRole('table', { name: 'Mock draft board' })
+  expect(within(board).getByText(/Slot3 Center/)).toBeInTheDocument()
+  expect(within(board).getByText('3 Team Chino')).toBeInTheDocument()
+  expect(within(board).queryByText(/Slot1 Center/)).not.toBeInTheDocument()
+
+  const standings = screen.getByRole('table', {
+    name: 'Projected rotisserie standings',
+  })
+  expect(within(standings).getByText('Rival Team')).toBeInTheDocument()
+  expect(within(standings).getByText('93')).toBeInTheDocument()
+})
+
+test('selecting another slot swaps the drilldown', async () => {
+  await runSearch(weightSearchResult())
+
+  fireEvent.click(screen.getByTestId('weight-search-slot-3'))
+  fireEvent.click(screen.getByTestId('weight-search-slot-2'))
+
+  expect(screen.getByRole('heading', { name: 'Slot 2' })).toBeInTheDocument()
+  expect(
+    screen.getByRole('table', { name: 'Draft slot 2 weights' }),
+  ).toBeInTheDocument()
+  const board = screen.getByRole('table', { name: 'Mock draft board' })
+  expect(within(board).getByText(/Slot2 Center/)).toBeInTheDocument()
+  expect(within(board).queryByText(/Slot3 Center/)).not.toBeInTheDocument()
 })

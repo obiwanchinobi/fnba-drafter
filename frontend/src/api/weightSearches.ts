@@ -1,20 +1,21 @@
-import type { WeightSet } from './weightSets.ts'
+import type { CatWeights } from '../lib/catWeights.ts'
+import type { DraftRunView } from '../lib/draftBoard.ts'
 
-export type WeightSearchSlot = {
-  user_slot: number
-  weight_set: WeightSet
+// The best draft found for one Team Chino slot, with the weights that drove it.
+export type WeightSearchRun = DraftRunView & {
+  weight_set_name: string
+  weights: CatWeights
   rank: number
   roto_points: number
   margin: number
   won: boolean
-  evaluations: number
 }
 
 export type WeightSearch = {
   budget: number
   seed: number
   projection_imported_at: string
-  slots: WeightSearchSlot[]
+  runs: WeightSearchRun[]
 }
 
 const ERROR_MESSAGES: Record<string, string> = {

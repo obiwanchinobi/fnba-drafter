@@ -1,8 +1,9 @@
 import '@testing-library/jest-dom/vitest'
-import { cleanup, render, screen, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { ThemeProvider } from '@mui/material/styles'
-import { afterEach, expect, test } from 'vitest'
-import type { WeightSearch, WeightSearchSlot } from '../api/weightSearches.ts'
+import { afterEach, expect, test, vi } from 'vitest'
+import type { WeightSearch, WeightSearchRun } from '../api/weightSearches.ts'
+import { DEFAULT_WEIGHTS } from '../lib/catWeights.ts'
 import theme from '../theme.ts'
 import WeightSearchResults from './WeightSearchResults.tsx'
 
@@ -10,20 +11,18 @@ afterEach(() => {
   cleanup()
 })
 
-function slot(n: number, margin: number): WeightSearchSlot {
+function run(n: number, margin: number): WeightSearchRun {
   return {
     user_slot: n,
-    weight_set: {
-      id: 100 + n,
-      name: `Draft slot ${n}`,
-      weights: {} as WeightSearchSlot['weight_set']['weights'],
-      updated_at: '2026-09-26T00:00:00.000Z',
-    },
+    weight_set_name: `Draft slot ${n}`,
+    weights: DEFAULT_WEIGHTS,
     rank: margin > 0 ? 1 : 2,
     roto_points: 90 + margin,
     margin,
     won: margin > 0,
-    evaluations: 500,
+    draft_order: [],
+    standings: [],
+    picks: [],
   }
 }
 
@@ -33,14 +32,22 @@ function result(): WeightSearch {
     budget: 500,
     seed: 42,
     projection_imported_at: '2026-09-22T03:00:00.000Z',
-    slots: margins.map((margin, index) => slot(index + 1, margin)),
+    runs: margins.map((margin, index) => run(index + 1, margin)),
   }
 }
 
-function renderResults() {
+function renderResults(
+  selectedSlot: number | null = null,
+  onSelectSlot: (userSlot: number) => void = () => {},
+) {
   return render(
     <ThemeProvider theme={theme}>
-      <WeightSearchResults result={result()} userTeam="Team Chino" />
+      <WeightSearchResults
+        result={result()}
+        userTeam="Team Chino"
+        selectedSlot={selectedSlot}
+        onSelectSlot={onSelectSlot}
+      />
     </ThemeProvider>,
   )
 }
@@ -91,4 +98,22 @@ test('names the user team column and the opponent assumption', () => {
   expect(
     screen.getByText(/other seven teams use unweighted Total-Z/),
   ).toBeInTheDocument()
+})
+
+test('clicking a slot row selects that slot', () => {
+  const onSelectSlot = vi.fn()
+  renderResults(null, onSelectSlot)
+
+  fireEvent.click(screen.getByTestId('weight-search-slot-3'))
+
+  expect(onSelectSlot).toHaveBeenCalledWith(3)
+})
+
+test('marks only the selected slot row as selected', () => {
+  renderResults(3)
+
+  expect(screen.getByTestId('weight-search-slot-3')).toHaveClass('Mui-selected')
+  expect(screen.getByTestId('weight-search-slot-1')).not.toHaveClass(
+    'Mui-selected',
+  )
 })
