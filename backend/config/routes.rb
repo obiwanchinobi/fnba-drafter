@@ -12,5 +12,6 @@ Rails.application.routes.draw do
     post "projections/refresh", to: "projections#refresh"
     get "season_stats", to: "season_stats#index"
     resources :weight_sets, only: %i[index create update destroy]
+    resources :weight_searches, only: %i[create]
   end
 end
