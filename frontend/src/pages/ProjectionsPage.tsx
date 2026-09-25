@@ -200,6 +200,7 @@ export default function ProjectionsPage() {
     teams,
     search,
     sort,
+    heat,
   } = urlState
 
   function updateUrl(
@@ -503,6 +504,8 @@ export default function ProjectionsPage() {
             setWeightDialog({ open: true, mode: 'create' })
           }
           onEditWeights={() => setWeightDialog({ open: true, mode: 'edit' })}
+          heatmap={heat}
+          onHeatmapChange={(on) => updateUrl({ heat: on })}
         />
         {error ? <Alert severity="error">{error}</Alert> : null}
         {refreshResult && !error ? (
@@ -529,6 +532,7 @@ export default function ProjectionsPage() {
               basis={basis}
               zScores={zScores}
               weighted={weighted}
+              heatmap={heat}
               emptyMessage={
                 rows.length === 0
                   ? dataset === 'actual'
@@ -542,6 +546,10 @@ export default function ProjectionsPage() {
                 {`Z-scores vs the top ${zScores.poolSize} rostered players (8 teams × 16 roster spots, ≥ 20 GP). TO and PF are reversed so positive is better.${
                   weighted
                     ? ` Weighted Z applies "${weighted.name}"; Total Z uses equal weights; Δ Rank is places gained under the collection.`
+                    : ''
+                }${
+                  heat
+                    ? ' Heatmap: blue is above the pool mean, red is below.'
                     : ''
                 }`}
               </Typography>

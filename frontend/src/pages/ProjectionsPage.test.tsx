@@ -1376,3 +1376,82 @@ test('a known weights id selects that collection', async () => {
   )
   expect(screen.getByRole('button', { name: 'Weighted Z' })).toBeInTheDocument()
 })
+
+function cellBackground(cell: HTMLElement): string {
+  const inline = cell.style.backgroundColor.trim()
+  if (inline) return inline
+  const computed = getComputedStyle(cell).backgroundColor.trim()
+  if (
+    computed &&
+    computed !== 'rgba(0, 0, 0, 0)' &&
+    computed !== 'transparent'
+  ) {
+    return computed
+  }
+  const styles = [...document.querySelectorAll('style')]
+    .map((node) => node.textContent ?? '')
+    .join('\n')
+  for (const className of cell.classList) {
+    const needle = `.${className}`
+    let from = 0
+    while (from < styles.length) {
+      const at = styles.indexOf(needle, from)
+      if (at === -1) break
+      const open = styles.indexOf('{', at)
+      const close = open === -1 ? -1 : styles.indexOf('}', open)
+      if (open === -1 || close === -1) break
+      const rule = styles.slice(at, close + 1)
+      const match = rule.match(/background(?:-color)?:\s*([^;]+)/i)
+      if (match?.[1]) return match[1].trim()
+      from = close + 1
+    }
+  }
+  return ''
+}
+
+test('toggling Heatmap colours a cell and writes heat=1', async () => {
+  stubProjections([
+    projectionRow({
+      id: 1,
+      full_name: 'High Scorer',
+      positions: ['C'],
+      nba_team: 'DEN',
+      pts: 2500,
+    }),
+    projectionRow({
+      id: 2,
+      full_name: 'Low Scorer',
+      positions: ['PG'],
+      nba_team: 'OKC',
+      pts: 1000,
+    }),
+  ])
+
+  renderPage(<ProjectionsPage />)
+
+  expect(await screen.findByText('High Scorer')).toBeInTheDocument()
+  expect(
+    screen.queryByRole('switch', { name: 'Heatmap' }),
+  ).not.toBeInTheDocument()
+
+  fireEvent.click(screen.getByRole('button', { name: 'Z-scores' }))
+
+  const baseCaption =
+    'Z-scores vs the top 2 rostered players (8 teams × 16 roster spots, ≥ 20 GP). TO and PF are reversed so positive is better.'
+  expect(screen.getByText(baseCaption)).toBeInTheDocument()
+  const ptsBefore = cellByHeader('High Scorer', 'PTS')
+  expect(cellBackground(ptsBefore)).toBe('')
+
+  fireEvent.click(screen.getByRole('switch', { name: 'Heatmap' }))
+
+  expect(screen.getByTestId('location')).toHaveTextContent(
+    '/projections?view=z&heat=1',
+  )
+  expect(screen.getByRole('switch', { name: 'Heatmap' })).toBeChecked()
+  expect(
+    screen.getByText(
+      `${baseCaption} Heatmap: blue is above the pool mean, red is below.`,
+    ),
+  ).toBeInTheDocument()
+  expect(cellBackground(cellByHeader('High Scorer', 'PTS'))).not.toBe('')
+})

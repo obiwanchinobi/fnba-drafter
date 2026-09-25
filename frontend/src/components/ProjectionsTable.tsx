@@ -16,6 +16,11 @@ import {
   type Projection,
 } from '../api/projections.ts'
 import {
+  CAT_Z_CAP,
+  TOTAL_Z_CAP,
+  heatBackground,
+} from '../lib/heatmap.ts'
+import {
   basisRatioParts,
   basisValue,
   isScoredCat,
@@ -342,6 +347,28 @@ function tableAriaLabel(
   return withBasis
 }
 
+// Stored z is already signed so positive is better, including reversed TO and PF.
+function zHeatBackground(
+  row: Projection,
+  columnId: string,
+  zScores: ZScoresResult | null,
+  weighted: WeightedColumns | null,
+): string | undefined {
+  if (isScoredCat(columnId)) {
+    return heatBackground(
+      zScores?.scores.get(row.id)?.cats[columnId] ?? null,
+      CAT_Z_CAP,
+    )
+  }
+  if (columnId === 'z_total') {
+    return heatBackground(zScores?.scores.get(row.id)?.total ?? null, TOTAL_Z_CAP)
+  }
+  if (columnId === 'z_weighted') {
+    return heatBackground(weighted?.totals.get(row.id) ?? null, TOTAL_Z_CAP)
+  }
+  return undefined
+}
+
 function formatCell(
   row: Projection,
   columnId: string,
@@ -460,6 +487,7 @@ type ProjectionsTableProps = {
   basis?: Basis
   zScores?: ZScoresResult | null
   weighted?: WeightedColumns | null
+  heatmap?: boolean
 }
 
 export default function ProjectionsTable({
@@ -473,6 +501,7 @@ export default function ProjectionsTable({
   basis = 'per_game',
   zScores = null,
   weighted = null,
+  heatmap = false,
 }: ProjectionsTableProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const visibleColumns = COLUMNS.filter(
@@ -570,12 +599,17 @@ export default function ProjectionsTable({
                       const estimated =
                         dataset === 'projection' &&
                         (row.estimated_stat_keys ?? []).includes(column.id)
+                      const heat =
+                        view === 'z' && heatmap
+                          ? zHeatBackground(row, column.id, zScores, weighted)
+                          : undefined
                       return (
                         <TableCell
                           key={column.id}
                           sx={{
                             ...cellSx(column, false),
                             ...(estimated ? { fontStyle: 'italic' } : {}),
+                            ...(heat != null ? { backgroundColor: heat } : {}),
                           }}
                           title={
                             estimated
