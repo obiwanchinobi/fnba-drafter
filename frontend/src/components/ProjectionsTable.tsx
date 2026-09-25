@@ -1,5 +1,6 @@
 import { useVirtualizer, type Virtualizer } from '@tanstack/react-virtual'
 import Paper from '@mui/material/Paper'
+import SvgIcon from '@mui/material/SvgIcon'
 import Table from '@mui/material/Table'
 import TableBody from '@mui/material/TableBody'
 import TableCell from '@mui/material/TableCell'
@@ -8,7 +9,7 @@ import TableHead from '@mui/material/TableHead'
 import TableRow from '@mui/material/TableRow'
 import TableSortLabel from '@mui/material/TableSortLabel'
 import Typography from '@mui/material/Typography'
-import { useRef } from 'react'
+import { useRef, type ComponentProps } from 'react'
 import {
   DEFAULT_PROJECTION_SEASON,
   type Dataset,
@@ -79,7 +80,6 @@ const COLUMNS: Column[] = [
   { id: 'player', label: 'Player', sortColumn: 'player', sticky: 'player' },
   { id: 'pos', label: 'Pos', sortColumn: 'pos', sticky: 'pos' },
   { id: 'team', label: 'Team', sortColumn: 'team', sticky: 'team' },
-  { id: 'inj', label: 'Inj' },
   { id: 'rank', label: 'Rank', sortColumn: 'rank', numeric: true },
   { id: 'z_total', label: 'Total Z', sortColumn: 'z_total', numeric: true, zOnly: true },
   {
@@ -369,8 +369,6 @@ function formatCell(
       return row.positions.join(', ')
     case 'team':
       return row.nba_team
-    case 'inj':
-      return row.injury_status ?? '—'
     case 'rank':
       if (dataset === 'actual' || row.espn_roto_rank == null) return '—'
       return String(row.espn_roto_rank)
@@ -422,6 +420,32 @@ function formatCell(
     default:
       return '—'
   }
+}
+
+function injuryIcon(status: string | null) {
+  if (status !== 'OUT' && status !== 'DAY_TO_DAY') return null
+
+  const out = status === 'OUT'
+  const label = out ? 'Out' : 'Day to day'
+  // SvgIcon defaults to aria-hidden, which would hide the accessible name.
+  // React's SVG types also omit the global title attribute that it forwards.
+  const labelled = { title: label } as ComponentProps<typeof SvgIcon>
+  return (
+    <SvgIcon
+      role="img"
+      aria-label={label}
+      aria-hidden={false}
+      {...labelled}
+      sx={{
+        ml: 0.5,
+        verticalAlign: 'text-bottom',
+        fontSize: 16,
+        color: out ? 'error.main' : 'warning.main',
+      }}
+    >
+      <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" />
+    </SvgIcon>
+  )
 }
 
 type ProjectionsTableProps = {
@@ -564,6 +588,9 @@ export default function ProjectionsTable({
                             basis,
                             weighted,
                           )}
+                          {column.id === 'player'
+                            ? injuryIcon(row.injury_status)
+                            : null}
                           {showDeltaCaption
                             ? estimatedDeltaCaption(row, column.id)
                             : null}

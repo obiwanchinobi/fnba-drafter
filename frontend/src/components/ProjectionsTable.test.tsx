@@ -187,6 +187,82 @@ test('exposes sort labels and reports the clicked column', () => {
   expect(onSort).toHaveBeenCalledWith('rank')
 })
 
+test('shows an injury icon beside the name and no Inj column', () => {
+  const rows: Projection[] = [
+    { ...jokic, id: 1, full_name: 'Out Player', injury_status: 'OUT' },
+    {
+      ...jokic,
+      id: 2,
+      player_id: 2,
+      full_name: 'Day To Day Player',
+      injury_status: 'DAY_TO_DAY',
+    },
+    {
+      ...jokic,
+      id: 3,
+      player_id: 3,
+      full_name: 'Active Player',
+      injury_status: 'ACTIVE',
+    },
+    {
+      ...jokic,
+      id: 4,
+      player_id: 4,
+      full_name: 'Healthy Player',
+      injury_status: null,
+    },
+    {
+      ...jokic,
+      id: 5,
+      player_id: 5,
+      full_name: 'Unknown Player',
+      injury_status: 'QUESTIONABLE',
+    },
+  ]
+
+  renderTable(
+    <ProjectionsTable
+      rows={rows}
+      sortBy={null}
+      sortDirection="desc"
+      onSort={() => {}}
+      emptyMessage="No projections yet. Use Update from source."
+    />,
+  )
+
+  expect(
+    screen.queryByRole('columnheader', { name: 'Inj' }),
+  ).not.toBeInTheDocument()
+
+  const outCell = cellText('Out Player', 'Player')
+  expect(outCell.textContent).toBe('Out Player')
+  const outIcon = within(outCell).getByRole('img', { name: 'Out' })
+  expect(outIcon).toHaveAttribute('title', 'Out')
+  expect(outIcon).toHaveStyle({
+    color: theme.palette.error.main,
+    fontSize: '16px',
+  })
+
+  const dayCell = cellText('Day To Day Player', 'Player')
+  expect(dayCell.textContent).toBe('Day To Day Player')
+  const dayIcon = within(dayCell).getByRole('img', { name: 'Day to day' })
+  expect(dayIcon).toHaveAttribute('title', 'Day to day')
+  expect(dayIcon).toHaveStyle({
+    color: theme.palette.warning.main,
+    fontSize: '16px',
+  })
+
+  expect(
+    within(cellText('Active Player', 'Player')).queryByRole('img'),
+  ).toBeNull()
+  expect(
+    within(cellText('Healthy Player', 'Player')).queryByRole('img'),
+  ).toBeNull()
+  expect(
+    within(cellText('Unknown Player', 'Player')).queryByRole('img'),
+  ).toBeNull()
+})
+
 test('estimated OREB cell is italic with the FNBA estimate title', () => {
   const estimated = {
     ...jokic,
