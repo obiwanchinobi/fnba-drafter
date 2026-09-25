@@ -17,7 +17,12 @@ function App() {
     <>
       <Box sx={{ px: 2, pt: 2 }}>
         <Tabs value={section} aria-label="FNBA sections">
-          <Tab value="projections" label="Projections" component={Link} to="/" />
+          <Tab
+            value="projections"
+            label="Projections"
+            component={Link}
+            to="/projections"
+          />
           <Tab
             value="mock_drafts"
             label="Mock drafts"
@@ -27,10 +32,11 @@ function App() {
         </Tabs>
       </Box>
       <Routes>
-        <Route path="/" element={<ProjectionsPage />} />
+        <Route path="/" element={<Navigate to="/projections" replace />} />
+        <Route path="/projections" element={<ProjectionsPage />} />
         <Route path="/mock-drafts" element={<MockDraftsPage />} />
         <Route path="/mock-drafts/:id" element={<MockDraftsPage />} />
-        <Route path="*" element={<Navigate to="/" replace />} />
+        <Route path="*" element={<Navigate to="/projections" replace />} />
       </Routes>
     </>
   )

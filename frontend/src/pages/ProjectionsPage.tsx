@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router'
 import Alert from '@mui/material/Alert'
 import Chip from '@mui/material/Chip'
 import Container from '@mui/material/Container'
@@ -37,19 +38,13 @@ import {
   toNumber,
   type Basis,
 } from '../lib/statBasis.ts'
+import {
+  defaultSortDirection,
+  parseProjectionsSearch,
+  serializeProjectionsSearch,
+  type ProjectionsUrlState,
+} from '../lib/projectionsUrlState.ts'
 import { computeZScores, type ZScoresResult } from '../lib/zScores.ts'
-
-const ASC_FIRST_SORT_COLUMNS = new Set<SortColumn>([
-  'player',
-  'pos',
-  'team',
-  'rank',
-])
-
-type SortState = {
-  column: SortColumn
-  direction: SortDirection
-}
 
 function playerMatchesSearch(fullName: string, search: string): boolean {
   const needle = search.trim().toLowerCase()
@@ -163,9 +158,67 @@ function loadDataset(
   return fetchProjections({ source, season: DEFAULT_PROJECTION_SEASON })
 }
 
+function nextSort(
+  current: ProjectionsUrlState['sort'],
+  column: SortColumn,
+): NonNullable<ProjectionsUrlState['sort']> {
+  if (current?.column === column) {
+    return {
+      column,
+      direction: current.direction === 'asc' ? 'desc' : 'asc',
+    }
+  }
+  return { column, direction: defaultSortDirection(column) }
+}
+
+function withoutWeightedSort(
+  current: ProjectionsUrlState['sort'],
+): ProjectionsUrlState['sort'] {
+  if (current?.column !== 'z_weighted' && current?.column !== 'z_rank_delta') {
+    return current
+  }
+  return { column: 'z_total', direction: 'desc' }
+}
+
 export default function ProjectionsPage() {
+  const [searchParams, setSearchParams] = useSearchParams()
+  const setSearchParamsRef = useRef(setSearchParams)
+  // Latest setter, so a handler that awaits still merges onto the current query.
+  useEffect(() => {
+    setSearchParamsRef.current = setSearchParams
+  }, [setSearchParams])
+  const urlState = useMemo(
+    () => parseProjectionsSearch(searchParams),
+    [searchParams],
+  )
+  const {
+    dataset,
+    view,
+    basis,
+    weights: activeWeightSetId,
+    position,
+    teams,
+    search,
+    sort,
+  } = urlState
+
+  function updateUrl(
+    patch:
+      | Partial<ProjectionsUrlState>
+      | ((current: ProjectionsUrlState) => Partial<ProjectionsUrlState>),
+  ) {
+    setSearchParamsRef.current(
+      (prev) => {
+        const current = parseProjectionsSearch(prev)
+        const resolved = typeof patch === 'function' ? patch(current) : patch
+        // Spread the parsed query, including heat, so a partial edit cannot drop it.
+        return serializeProjectionsSearch({ ...current, ...resolved })
+      },
+      { replace: true },
+    )
+  }
+
   const [source, setSource] = useState(DEFAULT_PROJECTION_SOURCE)
-  const [dataset, setDataset] = useState<Dataset>('projection')
   const [rows, setRows] = useState<Projection[]>([])
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -173,16 +226,7 @@ export default function ProjectionsPage() {
   const [refreshResult, setRefreshResult] = useState<ProjectionRefresh | null>(
     null,
   )
-  const [search, setSearch] = useState('')
-  const [position, setPosition] = useState<PositionFilter>('All')
-  const [teams, setTeams] = useState<string[]>([])
-  const [sort, setSort] = useState<SortState | null>(null)
-  const [view, setView] = useState<StatView>('values')
-  const [basis, setBasis] = useState<Basis>('per_game')
   const [weightSets, setWeightSets] = useState<WeightSet[]>([])
-  const [activeWeightSetId, setActiveWeightSetId] = useState<
-    number | 'default'
-  >('default')
   const [weightDialog, setWeightDialog] = useState<{
     open: boolean
     mode: 'create' | 'edit'
@@ -252,6 +296,10 @@ export default function ProjectionsPage() {
       ? null
       : (weightSets.find((set) => set.id === activeWeightSetId) ?? null)
   const activeWeights = activeWeightSet?.weights ?? DEFAULT_WEIGHTS
+  // Unknown ids display as Default but stay in the query so a set that
+  // loads later, or a shared link, is not dropped on the first paint.
+  const displayedWeightSetId =
+    activeWeightSet == null ? 'default' : activeWeightSetId
 
   const weightedTotals = useMemo(() => {
     const totals = new Map<number, number | null>()
@@ -370,56 +418,41 @@ export default function ProjectionsPage() {
   }
 
   function handleDatasetChange(next: Dataset) {
-    setDataset(next)
-    if (next === 'actual') {
-      setSort({ column: 'pts', direction: 'desc' })
-    }
+    updateUrl((current) => ({
+      dataset: next,
+      sort:
+        next === 'actual'
+          ? { column: 'pts', direction: 'desc' }
+          : current.sort,
+    }))
   }
 
   function handleSort(column: SortColumn) {
-    setSort((current) => {
-      if (current?.column === column) {
-        return {
-          column,
-          direction: current.direction === 'asc' ? 'desc' : 'asc',
-        }
-      }
-      return {
-        column,
-        direction: ASC_FIRST_SORT_COLUMNS.has(column) ? 'asc' : 'desc',
-      }
-    })
-  }
-
-  function resetSortOffWeightedColumns() {
-    setSort((current) => {
-      if (
-        current?.column !== 'z_weighted' &&
-        current?.column !== 'z_rank_delta'
-      ) {
-        return current
-      }
-      return { column: 'z_total', direction: 'desc' }
-    })
+    updateUrl((current) => ({ sort: nextSort(current.sort, column) }))
   }
 
   function handleWeightSetChange(next: number | 'default') {
-    setActiveWeightSetId(next)
-    if (next === 'default') resetSortOffWeightedColumns()
+    updateUrl((current) => ({
+      weights: next,
+      sort:
+        next === 'default' ? withoutWeightedSort(current.sort) : current.sort,
+    }))
   }
 
   async function handleWeightsSaved(saved: WeightSet) {
     const list = await fetchWeightSets()
     setWeightSets(list)
-    setActiveWeightSetId(saved.id)
+    updateUrl({ weights: saved.id })
     setWeightDialog({ open: false, mode: 'create' })
   }
 
   async function handleWeightsDeleted() {
     const list = await fetchWeightSets()
     setWeightSets(list)
-    setActiveWeightSetId('default')
-    resetSortOffWeightedColumns()
+    updateUrl((current) => ({
+      weights: 'default',
+      sort: withoutWeightedSort(current.sort),
+    }))
     setWeightDialog({ open: false, mode: 'create' })
   }
 
@@ -451,20 +484,20 @@ export default function ProjectionsPage() {
           dataset={dataset}
           onDatasetChange={handleDatasetChange}
           search={search}
-          onSearchChange={setSearch}
+          onSearchChange={(value) => updateUrl({ search: value })}
           position={position}
-          onPositionChange={setPosition}
+          onPositionChange={(value) => updateUrl({ position: value })}
           teams={teams}
-          onTeamsChange={setTeams}
+          onTeamsChange={(value) => updateUrl({ teams: value })}
           extraTeams={extraTeams}
           onUpdateFromSource={handleUpdateFromSource}
           updating={updating}
           view={view}
-          onViewChange={setView}
+          onViewChange={(value) => updateUrl({ view: value })}
           basis={basis}
-          onBasisChange={setBasis}
+          onBasisChange={(value) => updateUrl({ basis: value })}
           weightSets={weightSets}
-          activeWeightSetId={activeWeightSetId}
+          activeWeightSetId={displayedWeightSetId}
           onWeightSetChange={handleWeightSetChange}
           onCreateWeights={() =>
             setWeightDialog({ open: true, mode: 'create' })
