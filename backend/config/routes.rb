@@ -6,7 +6,7 @@ Rails.application.routes.draw do
   get "up" => "rails/health#show", as: :rails_health_check
 
   namespace :api do
-    resources :mock_drafts, only: %i[index show create]
+    resources :mock_drafts, only: %i[index show create destroy]
     get "status", to: "status#show"
     get "projections", to: "projections#index"
     post "projections/refresh", to: "projections#refresh"

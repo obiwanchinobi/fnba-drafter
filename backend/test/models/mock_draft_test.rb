@@ -223,6 +223,72 @@ class MockDraftTest < ActiveSupport::TestCase
     assert_equal 0, MockDraft.count
   end
 
+  test "simulate! with a weight set ranks only Team Chino by that collection" do
+    star = create_draftable(full_name: "Total Star", pts: 2_000, blk: 20, espn_roto_rank: 1)
+    high_blocks = Array.new(64) { |index| create_draftable(blk: 60, espn_roto_rank: 100 + index) }
+    low_blocks = Array.new(64) { |index| create_draftable(blk: 20, espn_roto_rank: 200 + index) }
+    specialist = create_draftable(full_name: "Block Specialist", pts: 100, blk: 100, espn_roto_rank: 900)
+    incomplete = create_draftable(full_name: "Missing Points", pts: nil, blk: 9_000, espn_roto_rank: 1)
+
+    weights = WeightSet::CATEGORIES.index_with { |cat| cat == "blk" ? 1.0 : 0.0 }
+    collection = WeightSet.create!(name: "Blocks only", weights: weights)
+
+    default_draft = MockDraft.simulate!(policy: "fnba_total_z")
+    weighted_draft = MockDraft.simulate!(policy: "fnba_total_z", weight_set: collection)
+
+    assert_equal "fnba_total_z", weighted_draft.policy
+    assert_nil default_draft.weight_set_name
+    assert_nil default_draft.weights
+    assert_equal "Blocks only", weighted_draft.weight_set_name
+    assert_equal collection.weights.keys.sort, weighted_draft.weights.keys.sort
+    collection.weights.each do |cat, weight|
+      assert_in_delta weight, weighted_draft.weights.fetch(cat).to_f
+    end
+
+    default_last = default_draft.runs.find_by!(user_slot: 8)
+    weighted_last = weighted_draft.runs.find_by!(user_slot: 8)
+    assert_equal League::USER_TEAM, weighted_last.draft_order.last
+
+    default_picks = default_last.picks.order(:overall_pick).to_a
+    weighted_picks = weighted_last.picks.order(:overall_pick).to_a
+    assert_equal star.id, default_picks.first.player_id
+    assert_equal default_picks.first(7).map(&:player_id), weighted_picks.first(7).map(&:player_id)
+    assert_equal high_blocks.first(6).map(&:id), weighted_picks[1, 6].map(&:player_id)
+
+    weighted_draft.runs.each do |run|
+      chino = run.picks.where(team: League::USER_TEAM).order(:overall_pick).first
+      assert_equal specialist.id, chino.player_id
+      assert_operator chino.z_weighted.to_f, :>, weighted_picks.first.z_weighted.to_f
+    end
+
+    default_first = first_player_by_team(default_last)
+    weighted_first = first_player_by_team(weighted_last)
+    (League::TEAMS - [ League::USER_TEAM ]).each do |team|
+      assert_equal default_first[team], weighted_first[team], "#{team} first pick"
+    end
+    assert_equal specialist.id, weighted_first[League::USER_TEAM]
+    assert_not_equal specialist.id, default_first[League::USER_TEAM]
+
+    assert_in_delta default_picks.first.z_total.to_f, weighted_picks.first.z_total.to_f, 1e-6
+    assert_operator default_picks.first.z_total.to_f, :>, default_picks.second.z_total.to_f
+
+    drafted_default = default_draft.runs.flat_map { |run| run.picks.pluck(:player_id) }.uniq
+    drafted_weighted = weighted_draft.runs.flat_map { |run| run.picks.pluck(:player_id) }.uniq
+    assert_not_includes drafted_default, specialist.id
+    assert_not_includes drafted_default, incomplete.id
+    assert_not_includes drafted_weighted, incomplete.id
+    assert_includes drafted_weighted, specialist.id
+    assert_not_includes drafted_default, low_blocks.last.id
+
+    weighted_draft.runs.each do |run|
+      assert run.picks.pluck(:z_weighted).all? { |value| !value.nil? }
+      assert_equal 19, run.standings.first.fetch("cats").size
+    end
+    default_draft.runs.each do |run|
+      assert run.picks.pluck(:z_weighted).all?(&:nil?)
+    end
+  end
+
   test "simulate! raises BoardTooSmall when fewer than 128 players are draftable" do
     127.times { |index| create_draftable(espn_roto_rank: index + 1) }
     create_draftable(gp: 19, espn_roto_rank: 1_000)
@@ -238,6 +304,12 @@ class MockDraftTest < ActiveSupport::TestCase
   end
 
   private
+    def first_player_by_team(run)
+      run.picks.order(:overall_pick).each_with_object({}) do |pick, first|
+        first[pick.team] ||= pick.player_id
+      end
+    end
+
     def next_espn_player_id
       @next_espn_player_id = @next_espn_player_id.to_i + 1
       (Process.pid * 1_000_000_000) + ((object_id % 1_000_000) * 1_000) + @next_espn_player_id

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_22_150000) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_23_223409) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -25,6 +25,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_22_150000) do
     t.string "team", null: false
     t.datetime "updated_at", null: false
     t.decimal "z_total", null: false
+    t.decimal "z_weighted"
     t.index ["mock_draft_run_id", "overall_pick"], name: "index_mock_draft_picks_on_mock_draft_run_id_and_overall_pick", unique: true
     t.index ["mock_draft_run_id", "team"], name: "index_mock_draft_picks_on_mock_draft_run_id_and_team"
     t.index ["mock_draft_run_id"], name: "index_mock_draft_picks_on_mock_draft_run_id"
@@ -51,6 +52,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_22_150000) do
     t.string "source", null: false
     t.datetime "updated_at", null: false
     t.string "user_team", null: false
+    t.string "weight_set_name"
+    t.jsonb "weights"
   end
 
   create_table "player_projections", force: :cascade do |t|

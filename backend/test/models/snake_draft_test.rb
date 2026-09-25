@@ -122,4 +122,41 @@ class SnakeDraftTest < ActiveSupport::TestCase
       SnakeDraft.new(order: [ "A", "B" ], board: board, rounds: 1).picks
     end
   end
+
+  test "a ranked team picks the max by its key and other teams take the first eligible" do
+    order = [ "Chino", "Other" ]
+    board = [
+      { player_id: 1, positions: ALL_POSITIONS, value: 100, weighted_value: 1 },
+      { player_id: 2, positions: ALL_POSITIONS, value: 90, weighted_value: 50 },
+      { player_id: 3, positions: ALL_POSITIONS, value: 80, weighted_value: 50 },
+      { player_id: 4, positions: ALL_POSITIONS, value: 70, weighted_value: 10 }
+    ]
+
+    picks = SnakeDraft.new(
+      order: order,
+      board: board,
+      rounds: 2,
+      ranking: { "Chino" => :weighted_value }
+    ).picks
+
+    assert_equal [ 2, 1, 3, 4 ], picks.map { |pick| pick[:player_id] }
+    assert_equal [ "Chino", "Other", "Other", "Chino" ], picks.map { |pick| pick[:team] }
+    assert_equal [ 90, 100, 80, 70 ], picks.map { |pick| pick[:value] }
+    assert_equal [ 50, 1, 50, 10 ], picks.map { |pick| pick[:weighted_value] }
+  end
+
+  test "raises BoardExhausted when a ranked team has nobody left" do
+    board = [ { player_id: 1, positions: ALL_POSITIONS, value: 1, weighted_value: 9 } ]
+
+    error = assert_raises(SnakeDraft::BoardExhausted) do
+      SnakeDraft.new(
+        order: [ "Chino", "Other" ],
+        board: board,
+        rounds: 1,
+        ranking: { "Chino" => :weighted_value }
+      ).picks
+    end
+
+    assert_match(/Other/, error.message)
+  end
 end

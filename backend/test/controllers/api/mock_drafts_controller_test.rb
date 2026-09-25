@@ -37,6 +37,54 @@ module Api
       assert_equal 0, MockDraft.count
     end
 
+    test "POST /api/mock_drafts snapshots a weight set and returns weighted pick values" do
+      128.times { |index| create_draftable(espn_roto_rank: index + 1, pts: 1_080 + index) }
+      weights = WeightSet::CATEGORIES.index_with { |cat| cat == "blk" ? 2.0 : 0.0 }
+      collection = WeightSet.create!(name: "Blocks only", weights: weights)
+
+      post "/api/mock_drafts",
+        params: { policy: "fnba_total_z", weight_set_id: collection.id },
+        as: :json
+
+      assert_response :created
+      body = JSON.parse(response.body)
+      assert_equal "fnba_total_z", body["policy"]
+      assert_equal "Blocks only", body["weight_set_name"]
+      assert_equal collection.weights.keys.sort, body.fetch("weights").keys.sort
+      collection.weights.each do |cat, weight|
+        assert_in_delta weight, body.fetch("weights").fetch(cat).to_f
+      end
+      body.fetch("runs").each do |run|
+        run.fetch("picks").each do |pick|
+          assert_kind_of Numeric, pick["z_total"]
+          assert_kind_of Numeric, pick.fetch("z_weighted")
+        end
+      end
+    end
+
+    test "POST /api/mock_drafts returns unknown_weight_set and creates nothing" do
+      128.times { |index| create_draftable(espn_roto_rank: index + 1) }
+
+      assert_no_difference("MockDraft.count") do
+        post "/api/mock_drafts",
+          params: { policy: "fnba_total_z", weight_set_id: 0 },
+          as: :json
+      end
+
+      assert_response :unprocessable_entity
+      assert_equal({ "error" => "unknown_weight_set" }, JSON.parse(response.body))
+    end
+
+    test "POST /api/mock_drafts treats a null weight_set_id as the default" do
+      post "/api/mock_drafts",
+        params: { policy: "fnba_total_z", weight_set_id: nil }.to_json,
+        headers: { "CONTENT_TYPE" => "application/json" }
+
+      assert_response :unprocessable_entity
+      assert_equal({ "error" => "board_too_small" }, JSON.parse(response.body))
+      assert_equal 0, MockDraft.count
+    end
+
     test "GET /api/mock_drafts lists newest first with winners and Team Chino rank" do
       older = create_saved_draft(created_at: Time.utc(2026, 9, 1), user_rank: 4, user_points: 70)
       newer = create_saved_draft(created_at: Time.utc(2026, 9, 20), user_rank: 1, user_points: 110.5)
@@ -52,6 +100,12 @@ module Api
       assert_equal 1, run["user_rank"]
       assert_in_delta 110.5, run["user_roto_points"]
       assert_equal "fnba_total_z", json.first["policy"]
+      json.each do |row|
+        assert row.key?("weight_set_name")
+        assert_nil row["weight_set_name"]
+        assert row.key?("weights")
+        assert_nil row["weights"]
+      end
     end
 
     test "GET /api/mock_drafts/:id includes eight runs and 128 picks without a per-pick query" do
@@ -77,6 +131,41 @@ module Api
       assert_response :not_found
     end
 
+    test "DELETE /api/mock_drafts/:id removes the draft, its runs, and its picks" do
+      128.times { |index| create_draftable(espn_roto_rank: index + 1) }
+      draft = MockDraft.simulate!(policy: "fnba_total_z")
+      run_ids = draft.runs.pluck(:id)
+      assert_equal 8, run_ids.size
+      assert_equal 8 * 128, MockDraftPick.where(mock_draft_run_id: run_ids).count
+
+      assert_difference(
+        -> { MockDraft.count } => -1,
+        -> { MockDraftRun.count } => -8,
+        -> { MockDraftPick.count } => -(8 * 128)
+      ) do
+        assert_queries_match(/DELETE FROM ["']mock_draft_picks["']/, count: 8) do
+          delete "/api/mock_drafts/#{draft.id}"
+        end
+      end
+
+      assert_response :no_content
+      assert_equal "", response.body
+      assert_not MockDraft.exists?(draft.id)
+      assert_equal 0, MockDraftRun.where(id: run_ids).count
+      assert_equal 0, MockDraftPick.where(mock_draft_run_id: run_ids).count
+    end
+
+    test "DELETE /api/mock_drafts/:id is 404 when the draft is missing" do
+      kept = create_saved_draft(created_at: Time.utc(2026, 9, 1), user_rank: 4, user_points: 70)
+
+      assert_no_difference [ "MockDraft.count", "MockDraftRun.count", "MockDraftPick.count" ] do
+        delete "/api/mock_drafts/0"
+      end
+
+      assert_response :not_found
+      assert MockDraft.exists?(kept.id)
+    end
+
     private
       def assert_show_payload(body)
         assert_equal "fnba_total_z", body["policy"]
@@ -84,6 +173,10 @@ module Api
         assert_equal Espn::SEASON, body["season"]
         assert_equal League::POOL_SIZE, body["pool_size"]
         assert_equal League::USER_TEAM, body["user_team"]
+        assert body.key?("weight_set_name")
+        assert_nil body["weight_set_name"]
+        assert body.key?("weights")
+        assert_nil body["weights"]
         assert_equal 8, body.fetch("runs").size
 
         body.fetch("runs").each_with_index do |run, index|
@@ -95,10 +188,12 @@ module Api
           pick = run.fetch("picks").first
           assert_equal %w[
             player_id full_name positions nba_team injury_status round slot
-            overall_pick team roster_slot z_total
+            overall_pick team roster_slot z_total z_weighted
           ].sort, pick.keys.sort
           assert_equal 1, pick["overall_pick"]
           assert_kind_of Numeric, pick["z_total"]
+          assert pick.key?("z_weighted")
+          assert_nil pick["z_weighted"]
         end
       end
 
