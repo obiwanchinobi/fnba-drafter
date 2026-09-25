@@ -24,12 +24,10 @@ import {
   type MockDraft,
   type MockDraftSummary,
 } from '../api/mockDrafts.ts'
-import { runWeightSearch, type WeightSearch } from '../api/weightSearches.ts'
 import { fetchWeightSets, type WeightSet } from '../api/weightSets.ts'
 import MockDraftBoard from '../components/MockDraftBoard.tsx'
 import MockDraftRunsTable from '../components/MockDraftRunsTable.tsx'
 import MockDraftStandings from '../components/MockDraftStandings.tsx'
-import WeightSearchResults from '../components/WeightSearchResults.tsx'
 import WeightSetDialog from '../components/WeightSetDialog.tsx'
 
 function formatWhen(value: string): string {
@@ -40,12 +38,10 @@ function formatWhen(value: string): string {
 
 function weightsHelper(name: string | null): string {
   const basis = 'FNBA Total-Z, season totals'
-  const search =
-    'Find winning weights searches per draft slot and saves the best collection as "Draft slot N".'
   if (name == null) {
-    return `${basis}. The other teams and Team Chino both use unweighted Total-Z. ${search}`
+    return `${basis}. The other teams and Team Chino both use unweighted Total-Z.`
   }
-  return `${basis}. Team Chino ranks by ${name}. The other seven teams use unweighted Total-Z. ${search}`
+  return `${basis}. Team Chino ranks by ${name}. The other seven teams use unweighted Total-Z.`
 }
 
 export default function MockDraftsPage() {
@@ -60,8 +56,6 @@ export default function MockDraftsPage() {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [running, setRunning] = useState(false)
-  const [searching, setSearching] = useState(false)
-  const [searchResult, setSearchResult] = useState<WeightSearch | null>(null)
   const [armedDeleteId, setArmedDeleteId] = useState<number | null>(null)
   const [weightSets, setWeightSets] = useState<WeightSet[]>([])
   const [activeWeightSetId, setActiveWeightSetId] = useState<
@@ -167,22 +161,6 @@ export default function MockDraftsPage() {
     }
   }
 
-  async function handleFindWeights() {
-    setSearching(true)
-    setError(null)
-    try {
-      const result = await runWeightSearch()
-      setSearchResult(result)
-      setWeightSets(await fetchWeightSets())
-    } catch (err: unknown) {
-      setError(
-        err instanceof Error ? err.message : 'Failed to find winning weights',
-      )
-    } finally {
-      setSearching(false)
-    }
-  }
-
   async function handleDelete(draftId: number) {
     if (armedDeleteId !== draftId) {
       setArmedDeleteId(draftId)
@@ -266,27 +244,16 @@ export default function MockDraftsPage() {
           <Button
             variant="contained"
             onClick={() => void handleRun()}
-            disabled={running || searching}
+            disabled={running}
             loading={running}
           >
             Run mock draft
-          </Button>
-          <Button
-            variant="outlined"
-            onClick={() => void handleFindWeights()}
-            disabled={running || searching}
-            loading={searching}
-          >
-            Find winning weights
           </Button>
         </Stack>
         <Typography variant="body2" color="text.secondary">
           {weightsHelper(activeWeightSet?.name ?? null)}
         </Typography>
         {error ? <Alert severity="error">{error}</Alert> : null}
-        {searchResult ? (
-          <WeightSearchResults result={searchResult} userTeam="Team Chino" />
-        ) : null}
         {loading ? (
           <Typography>Loading mock drafts…</Typography>
         ) : drafts.length === 0 ? (
