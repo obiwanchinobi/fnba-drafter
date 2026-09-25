@@ -7,7 +7,10 @@ import type { Projection } from '../api/projections.ts'
 import { SCORED_CAT_IDS, type ScoredCat } from '../lib/statBasis.ts'
 import type { ZScoresResult } from '../lib/zScores.ts'
 import theme from '../theme.ts'
-import ProjectionsTable, { ROW_HEIGHT } from './ProjectionsTable.tsx'
+import ProjectionsTable, {
+  ROW_HEIGHT,
+  Z_ROW_HEIGHT,
+} from './ProjectionsTable.tsx'
 
 function renderTable(ui: ReactElement) {
   return render(<ThemeProvider theme={theme}>{ui}</ThemeProvider>)
@@ -557,9 +560,72 @@ test('z cells render signed two-decimal z and an em dash for null', () => {
   const ptsIndex = headers.indexOf('PTS')
   const toIndex = headers.indexOf('TO')
   const orebIndex = headers.indexOf('OREB')
-  expect(cells[ptsIndex]).toHaveTextContent('+1.23')
-  expect(cells[toIndex]).toHaveTextContent('-0.45')
-  expect(cells[orebIndex]).toHaveTextContent('—')
+  expect(cells[ptsIndex]).toHaveTextContent(/^\+1\.23/)
+  expect(cells[toIndex]).toHaveTextContent(/^-0\.45/)
+  expect(cells[orebIndex]).toHaveTextContent(/^—/)
+})
+
+test('z view shows the basis value under each scored z-score', () => {
+  const { rerender } = renderTable(
+    <ProjectionsTable
+      rows={[jokic]}
+      sortBy={null}
+      sortDirection="desc"
+      onSort={() => {}}
+      emptyMessage="No projections yet. Use Update from source."
+      view="z"
+      basis="per_game"
+      zScores={zViewScores}
+    />,
+  )
+
+  const pts = cellText('Nikola Jokic', 'PTS')
+  expect(pts.childNodes[0]?.textContent).toBe('+1.23')
+  expect(within(pts).getByTestId('basis-value')).toHaveTextContent('25.0')
+
+  const oreb = cellText('Nikola Jokic', 'OREB')
+  expect(within(oreb).getByTestId('basis-value')).toHaveTextContent('—')
+
+  for (const header of ['Total Z', 'Rank', 'GP', 'MIN']) {
+    expect(
+      within(cellText('Nikola Jokic', header)).queryByTestId('basis-value'),
+    ).not.toBeInTheDocument()
+  }
+
+  rerender(
+    <ThemeProvider theme={theme}>
+      <ProjectionsTable
+        rows={[jokic]}
+        sortBy={null}
+        sortDirection="desc"
+        onSort={() => {}}
+        emptyMessage="No projections yet. Use Update from source."
+        view="z"
+        basis="total"
+        zScores={zViewScores}
+      />
+    </ThemeProvider>,
+  )
+
+  expect(
+    within(cellText('Nikola Jokic', 'PTS')).getByTestId('basis-value').textContent,
+  ).toBe('2050')
+})
+
+test('values view does not render a basis value under cells', () => {
+  renderTable(
+    <ProjectionsTable
+      rows={[jokic]}
+      sortBy={null}
+      sortDirection="desc"
+      onSort={() => {}}
+      emptyMessage="No projections yet. Use Update from source."
+      view="values"
+      basis="per_game"
+    />,
+  )
+
+  expect(screen.queryByTestId('basis-value')).not.toBeInTheDocument()
 })
 
 test('Total Z header is absent in values view and present and sortable in z view', () => {
@@ -922,6 +988,40 @@ test('mounts only the viewport window for 300 rows', () => {
       0,
     )
   expect(spacerHeight + dataRows.length * ROW_HEIGHT).toBe(300 * ROW_HEIGHT)
+})
+
+test('mounts only the viewport window for 300 rows in z view', () => {
+  const rows = Array.from({ length: 300 }, (_, index) => projectionCopy(index + 1))
+
+  renderTable(
+    <ProjectionsTable
+      rows={rows}
+      sortBy={null}
+      sortDirection="desc"
+      onSort={() => {}}
+      emptyMessage="No projections yet. Use Update from source."
+      view="z"
+      zScores={zViewScores}
+    />,
+  )
+
+  const bodyRows = screen.getByRole('table').querySelectorAll('tbody tr')
+  expect(bodyRows.length).toBeLessThan(300)
+  expect(screen.getByText('Player 1')).toBeInTheDocument()
+  expect(screen.queryByText('Player 300')).not.toBeInTheDocument()
+
+  const dataRows = [...bodyRows].filter(
+    (row) => row.getAttribute('aria-hidden') !== 'true',
+  )
+  const spacerHeight = [...bodyRows]
+    .filter((row) => row.getAttribute('aria-hidden') === 'true')
+    .reduce(
+      (sum, row) => sum + Number.parseFloat((row as HTMLElement).style.height || '0'),
+      0,
+    )
+  expect(spacerHeight + dataRows.length * Z_ROW_HEIGHT).toBe(
+    300 * Z_ROW_HEIGHT,
+  )
 })
 
 test('keeps a bounded scroll container and a sticky header', () => {

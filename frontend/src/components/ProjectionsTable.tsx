@@ -9,7 +9,7 @@ import TableHead from '@mui/material/TableHead'
 import TableRow from '@mui/material/TableRow'
 import TableSortLabel from '@mui/material/TableSortLabel'
 import Typography from '@mui/material/Typography'
-import { useRef, type ComponentProps } from 'react'
+import { useEffect, useRef, type ComponentProps } from 'react'
 import {
   DEFAULT_PROJECTION_SEASON,
   type Dataset,
@@ -125,6 +125,7 @@ const STICKY_LEFT = { player: 0, pos: 168, team: 240 } as const
 const STICKY_MIN_WIDTH = { player: 168, pos: 72, team: 64 } as const
 
 export const ROW_HEIGHT = 33
+export const Z_ROW_HEIGHT = 48
 
 // virtual-core's default rect read is offsetHeight, which is 0 without layout.
 function observeContainerRect(
@@ -484,10 +485,13 @@ export default function ProjectionsTable({
   const virtualizer = useVirtualizer({
     count: rows.length,
     getScrollElement: () => containerRef.current,
-    estimateSize: () => ROW_HEIGHT,
+    estimateSize: () => (view === 'z' ? Z_ROW_HEIGHT : ROW_HEIGHT),
     overscan: 10,
     observeElementRect: observeContainerRect,
   })
+  useEffect(() => {
+    virtualizer.measure()
+  }, [view, virtualizer])
   const virtualItems = rows.length > 0 ? virtualizer.getVirtualItems() : []
   const paddingTop = virtualItems[0]?.start ?? 0
   const paddingBottom =
@@ -588,6 +592,25 @@ export default function ProjectionsTable({
                             basis,
                             weighted,
                           )}
+                          {view === 'z' && isScoredCat(column.id) ? (
+                            <Typography
+                              component="span"
+                              variant="caption"
+                              color="text.secondary"
+                              data-testid="basis-value"
+                              sx={{ display: 'block' }}
+                            >
+                              {formatCell(
+                                row,
+                                column.id,
+                                dataset,
+                                'values',
+                                zScores,
+                                basis,
+                                weighted,
+                              )}
+                            </Typography>
+                          ) : null}
                           {column.id === 'player'
                             ? injuryIcon(row.injury_status)
                             : null}
