@@ -184,14 +184,14 @@ test('exposes sort labels and reports the clicked column', () => {
     />,
   )
 
-  for (const label of ['Player', 'Team', 'Pos', 'Rank', 'GP', 'MIN', 'PTS']) {
+  for (const label of ['Player', 'Team', 'Pos', 'ESPN Rank', 'GP', 'MIN', 'PTS']) {
     expect(screen.getByRole('button', { name: label })).toBeInTheDocument()
   }
 
   fireEvent.click(screen.getByRole('button', { name: /^PTS$/ }))
   expect(onSort).toHaveBeenCalledWith('pts')
 
-  fireEvent.click(screen.getByRole('button', { name: /^Rank$/ }))
+  fireEvent.click(screen.getByRole('button', { name: /^ESPN Rank$/ }))
   expect(onSort).toHaveBeenCalledWith('rank')
 })
 
@@ -493,7 +493,7 @@ test('actuals rank is an em dash and estimated_stat_keys do not italicize', () =
   const headers = screen
     .getAllByRole('columnheader')
     .map((header) => header.textContent)
-  const rankIndex = headers.indexOf('Rank')
+  const rankIndex = headers.indexOf('ESPN Rank')
   const orebIndex = headers.indexOf('OREB')
   expect(rankIndex).toBeGreaterThan(-1)
   expect(orebIndex).toBeGreaterThan(-1)
@@ -591,7 +591,7 @@ test('z view shows the basis value under each scored z-score', () => {
   const oreb = cellText('Nikola Jokic', 'OREB')
   expect(within(oreb).getByTestId('basis-value')).toHaveTextContent('—')
 
-  for (const header of ['Total Z', 'Rank', 'GP', 'MIN']) {
+  for (const header of ['Total Z', 'ESPN Rank', 'GP', 'MIN']) {
     expect(
       within(cellText('Nikola Jokic', header)).queryByTestId('basis-value'),
     ).not.toBeInTheDocument()
@@ -668,7 +668,7 @@ test('Total Z header is absent in values view and present and sortable in z view
   const headers = screen
     .getAllByRole('columnheader')
     .map((header) => header.textContent)
-  expect(headers.indexOf('Total Z')).toBe(headers.indexOf('Rank') + 1)
+  expect(headers.indexOf('Total Z')).toBe(headers.indexOf('ESPN Rank') + 1)
   fireEvent.click(screen.getByRole('button', { name: 'Total Z' }))
   expect(onSort).toHaveBeenCalledWith('z_total')
 })
@@ -1263,7 +1263,7 @@ test('heatmap colours scored cats and z totals from the fixture z', () => {
   expectHeat(cellText('Nikola Jokic', 'Total Z'), totalZ, TOTAL_Z_CAP)
   expectHeat(cellText('Nikola Jokic', 'Weighted Z'), weightedZ, TOTAL_Z_CAP)
   expectUnpainted(cellText('Nikola Jokic', 'Δ Rank'))
-  expectUnpainted(cellText('Nikola Jokic', 'Rank'))
+  expectUnpainted(cellText('Nikola Jokic', 'ESPN Rank'))
   expectUnpainted(cellText('Nikola Jokic', 'GP'))
   expectUnpainted(cellText('Nikola Jokic', 'MIN'))
   const player = cellText('Nikola Jokic', 'Player')

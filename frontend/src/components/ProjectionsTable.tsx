@@ -85,7 +85,7 @@ const COLUMNS: Column[] = [
   { id: 'player', label: 'Player', sortColumn: 'player', sticky: 'player' },
   { id: 'pos', label: 'Pos', sortColumn: 'pos', sticky: 'pos' },
   { id: 'team', label: 'Team', sortColumn: 'team', sticky: 'team' },
-  { id: 'rank', label: 'Rank', sortColumn: 'rank', numeric: true },
+  { id: 'rank', label: 'ESPN Rank', sortColumn: 'rank', numeric: true },
   { id: 'z_total', label: 'Total Z', sortColumn: 'z_total', numeric: true, zOnly: true },
   {
     id: 'z_weighted',

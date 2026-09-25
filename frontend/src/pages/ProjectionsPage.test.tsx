@@ -418,7 +418,7 @@ test('clicking PTS header reorders rows by points', async () => {
   ])
 })
 
-test('clicking Rank header sorts ESPN rank ascending first with NULL last', async () => {
+test('clicking ESPN Rank header sorts ESPN rank ascending first with NULL last', async () => {
   stubProjections([
     projectionRow({
       id: 2,
@@ -457,11 +457,11 @@ test('clicking Rank header sorts ESPN rank ascending first with NULL last', asyn
   const headers = screen
     .getAllByRole('columnheader')
     .map((header) => header.textContent)
-  expect(headers.filter((header) => header === 'Rank')).toHaveLength(1)
-  const rankIndex = headers.indexOf('Rank')
+  expect(headers.filter((header) => header === 'ESPN Rank')).toHaveLength(1)
+  const rankIndex = headers.indexOf('ESPN Rank')
   expect(rankIndex).toBeGreaterThan(-1)
 
-  const rankHeader = screen.getByRole('button', { name: /^Rank$/ })
+  const rankHeader = screen.getByRole('button', { name: /^ESPN Rank$/ })
 
   fireEvent.click(rankHeader)
   expect(playerNames()).toEqual([
