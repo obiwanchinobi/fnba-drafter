@@ -307,6 +307,8 @@ test('clicking slot 3 shows its weights, draft board and standings', async () =>
   })
   expect(within(standings).getByText('Rival Team')).toBeInTheDocument()
   expect(within(standings).getByText('93')).toBeInTheDocument()
+  expect(within(standings).getByText('2000')).toBeInTheDocument()
+  expect(within(standings).getByText('1900')).toBeInTheDocument()
 })
 
 test('selecting another slot swaps the drilldown', async () => {

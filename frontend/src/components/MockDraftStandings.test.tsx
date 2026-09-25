@@ -96,9 +96,7 @@ test('standings render in the given order with tied ranks and category points', 
 
   CAT_KEYS.forEach((key, index) => {
     const points = String(chino.cats[key]?.points)
-    const value = String(chino.cats[key]?.value)
     expect(chinoCells[index + 3]).toHaveTextContent(points)
-    expect(chinoCells[index + 3].textContent).not.toContain(value)
   })
 
   expect(rows[1]).toHaveAttribute('data-user-team', 'true')
@@ -114,4 +112,53 @@ test('standings render in the given order with tied ranks and category points', 
   ).toBeInTheDocument()
   expect(screen.getByText(/no injury or lineup model/i)).toBeInTheDocument()
   expect(screen.queryByText(/simulated season/i)).not.toBeInTheDocument()
+  expect(screen.queryByText(/not raw totals/i)).not.toBeInTheDocument()
+  expect(
+    screen.getByText(/small figure beneath is the team's projected season total/i),
+  ).toBeInTheDocument()
+})
+
+function cellFor(cells: HTMLElement[], key: (typeof CAT_KEYS)[number]) {
+  return cells[CAT_KEYS.indexOf(key) + 3]
+}
+
+test('each category cell shows the season total beneath the roto points', () => {
+  const chino = standing('Team Chino', 1, 120, 1)
+  chino.cats.fgm = { value: 8109.4, points: 8 }
+  chino.cats.fg_pct = { value: 0.4797089, points: 4 }
+  chino.cats.ato = { value: 1.75035, points: 1 }
+  chino.cats.to = { value: 2796, points: 1 }
+  chino.cats.ppm = { value: 0.62541, points: 4.5 }
+  renderStandings(
+    <MockDraftStandings standings={[chino]} userTeam="Team Chino" />,
+  )
+
+  const cells = within(screen.getAllByRole('row')[1]).getAllByRole('cell')
+
+  const fgm = cellFor(cells, 'fgm')
+  expect(fgm).toHaveTextContent(/^8\s*8109$/)
+  expect(within(fgm).getByText('8109')).toBeInTheDocument()
+
+  const fgPct = cellFor(cells, 'fg_pct')
+  expect(fgPct).toHaveTextContent(/^4\s*0\.480$/)
+
+  const ato = cellFor(cells, 'ato')
+  expect(ato).toHaveTextContent(/^1\s*1\.75$/)
+
+  const to = cellFor(cells, 'to')
+  expect(to).toHaveTextContent(/^1\s*2796$/)
+
+  const ppm = cellFor(cells, 'ppm')
+  expect(ppm).toHaveTextContent(/^4\.5\s*0\.63$/)
+})
+
+test('a missing category entry renders a dash with no season total', () => {
+  const chino = standing('Team Chino', 1, 120, 1)
+  delete chino.cats.fgm
+  renderStandings(
+    <MockDraftStandings standings={[chino]} userTeam="Team Chino" />,
+  )
+
+  const cells = within(screen.getAllByRole('row')[1]).getAllByRole('cell')
+  expect(cellFor(cells, 'fgm').textContent).toBe('—')
 })
