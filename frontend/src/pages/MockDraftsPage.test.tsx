@@ -4,6 +4,7 @@ import { ThemeProvider } from '@mui/material/styles'
 import { afterEach, expect, test, vi } from 'vitest'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router'
 import type { MockDraft } from '../api/mockDrafts.ts'
+import { DEFAULT_WEIGHTS } from '../lib/catWeights.ts'
 import theme from '../theme.ts'
 import MockDraftsPage from './MockDraftsPage.tsx'
 
@@ -391,6 +392,73 @@ test('a weighted draft says Team Chino ranks by the named collection', async () 
   expect(screen.getByText(/other seven teams/)).toBeInTheDocument()
   expect(
     screen.queryByText(/same player in all 8 permutations/),
+  ).not.toBeInTheDocument()
+})
+
+test('a weighted draft shows its weight collection above the runs', async () => {
+  const saved = draft(4)
+  saved.weight_set_name = 'Blocks only'
+  saved.weights = { ...DEFAULT_WEIGHTS, blk: 2.5 }
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url === '/api/weight_sets') {
+        return { ok: true, json: async () => [] }
+      }
+      if (url === '/api/mock_drafts/4') {
+        return { ok: true, json: async () => saved }
+      }
+      return { ok: true, json: async () => [saved] }
+    }),
+  )
+
+  renderPage('/mock-drafts/4')
+
+  const weights = await screen.findByRole('table', {
+    name: 'Blocks only weights',
+  })
+  expect(
+    within(weights).getByRole('columnheader', { name: 'BLK' }),
+  ).toBeInTheDocument()
+  const raw = within(weights).getByRole('row', { name: /^Weight/ })
+  expect(within(raw).getByText('2.5')).toBeInTheDocument()
+  expect(
+    within(weights).getByRole('row', { name: /^Relative to mean/ }),
+  ).toBeInTheDocument()
+
+  const runs = screen.getByRole('table', { name: 'Mock draft winners' })
+  expect(
+    weights.compareDocumentPosition(runs) & Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy()
+})
+
+test('the default unweighted draft shows no weight collection', async () => {
+  const saved = draft(4)
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url === '/api/weight_sets') {
+        return { ok: true, json: async () => [] }
+      }
+      if (url === '/api/mock_drafts/4') {
+        return { ok: true, json: async () => saved }
+      }
+      return { ok: true, json: async () => [saved] }
+    }),
+  )
+
+  renderPage('/mock-drafts/4')
+
+  expect(
+    await screen.findByText(/same player in all 8 permutations/),
+  ).toBeInTheDocument()
+  expect(
+    screen.queryByRole('table', { name: /weights$/ }),
+  ).not.toBeInTheDocument()
+  expect(
+    screen.queryByRole('row', { name: /^Relative to mean/ }),
   ).not.toBeInTheDocument()
 })
 

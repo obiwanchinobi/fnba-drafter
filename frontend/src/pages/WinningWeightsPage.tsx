@@ -5,26 +5,18 @@ import Container from '@mui/material/Container'
 import FormControl from '@mui/material/FormControl'
 import InputLabel from '@mui/material/InputLabel'
 import MenuItem from '@mui/material/MenuItem'
-import Paper from '@mui/material/Paper'
 import Select from '@mui/material/Select'
 import Stack from '@mui/material/Stack'
-import Table from '@mui/material/Table'
-import TableBody from '@mui/material/TableBody'
-import TableCell from '@mui/material/TableCell'
-import TableContainer from '@mui/material/TableContainer'
-import TableHead from '@mui/material/TableHead'
-import TableRow from '@mui/material/TableRow'
 import Typography from '@mui/material/Typography'
 import {
   fetchWeightSearch,
   runWeightSearch,
   type WeightSearchRun,
 } from '../api/weightSearches.ts'
+import CatWeightsTable from '../components/CatWeightsTable.tsx'
 import MockDraftBoard from '../components/MockDraftBoard.tsx'
 import MockDraftStandings from '../components/MockDraftStandings.tsx'
 import WeightSearchResults from '../components/WeightSearchResults.tsx'
-import { relativeWeights } from '../lib/catWeights.ts'
-import { SCORED_CAT_IDS, SCORED_CAT_LABELS } from '../lib/statBasis.ts'
 
 const USER_TEAM = 'Team Chino'
 const SLOTS = [1, 2, 3, 4, 5, 6, 7, 8] as const
@@ -34,11 +26,6 @@ function formatWhen(value: string | null): string {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return value
   return date.toLocaleString()
-}
-
-function formatWeight(value: number | null | undefined): string {
-  if (value == null || !Number.isFinite(value)) return '—'
-  return String(Number(value.toFixed(2)))
 }
 
 // Replaces the run for its slot (or adds it) and keeps runs ordered by slot.
@@ -53,52 +40,6 @@ function upsertRun(
 
 function errorMessage(err: unknown, fallback: string): string {
   return err instanceof Error ? err.message : fallback
-}
-
-function RunWeights({ run }: { run: WeightSearchRun }) {
-  const relative = relativeWeights(run.weights)
-  return (
-    <TableContainer
-      component={Paper}
-      variant="outlined"
-      sx={{ overflowX: 'auto' }}
-    >
-      <Table size="small" aria-label={`${run.weight_set_name} weights`}>
-        <TableHead>
-          <TableRow>
-            <TableCell />
-            {SCORED_CAT_IDS.map((cat) => (
-              <TableCell key={cat} align="right">
-                {SCORED_CAT_LABELS[cat]}
-              </TableCell>
-            ))}
-          </TableRow>
-        </TableHead>
-        <TableBody>
-          <TableRow>
-            <TableCell component="th" scope="row">
-              Weight
-            </TableCell>
-            {SCORED_CAT_IDS.map((cat) => (
-              <TableCell key={cat} align="right">
-                {formatWeight(run.weights[cat])}
-              </TableCell>
-            ))}
-          </TableRow>
-          <TableRow>
-            <TableCell component="th" scope="row">
-              Relative to mean
-            </TableCell>
-            {SCORED_CAT_IDS.map((cat) => (
-              <TableCell key={cat} align="right">
-                {formatWeight(relative[cat])}
-              </TableCell>
-            ))}
-          </TableRow>
-        </TableBody>
-      </Table>
-    </TableContainer>
-  )
 }
 
 export default function WinningWeightsPage() {
@@ -278,7 +219,10 @@ export default function WinningWeightsPage() {
               below are scenario 0, where the other seven teams draft by
               unweighted Total-Z.
             </Typography>
-            <RunWeights run={selectedRun} />
+            <CatWeightsTable
+              weights={selectedRun.weights}
+              label={`${selectedRun.weight_set_name} weights`}
+            />
             <MockDraftBoard run={selectedRun} userTeam={USER_TEAM} />
             <MockDraftStandings
               standings={selectedRun.standings}
