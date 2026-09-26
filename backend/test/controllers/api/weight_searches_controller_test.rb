@@ -65,7 +65,7 @@ module Api
     end
 
     test "POST /api/weight_search runs one slot, saves it and returns that run with 201" do
-      130.times { |index| create_draftable(index) }
+      (League::TEAM_COUNT * League::ROUNDS + 2).times { |index| create_draftable(index) }
 
       post "/api/weight_search", params: { user_slot: 6, budget: 2, seed: 11 }, as: :json
 
@@ -95,7 +95,7 @@ module Api
       assert_equal MockDraft.draft_order_for(6), run["draft_order"]
       assert_equal 8, run["standings"].size
       assert_equal run["rank"], run["standings"].find { |row| row["team"] == League::USER_TEAM }["rank"]
-      assert_equal (1..128).to_a, run["picks"].map { |pick| pick["overall_pick"] }
+      assert_equal (1..136).to_a, run["picks"].map { |pick| pick["overall_pick"] }
       run["picks"].each { |pick| assert_equal PICK_KEYS, pick.keys.sort }
       pick = run["picks"].first
       player = Player.find(pick["player_id"])
@@ -109,7 +109,7 @@ module Api
     end
 
     test "POST /api/weight_search without a slot in 1..8 returns 422 invalid_slot and runs nothing" do
-      130.times { |index| create_draftable(index) }
+      (League::TEAM_COUNT * League::ROUNDS + 2).times { |index| create_draftable(index) }
       [ {}, { user_slot: 0 }, { user_slot: 9 }, { user_slot: "3" }, { user_slot: 2.5 } ].each do |payload|
         post "/api/weight_search", params: payload.merge(budget: 1), as: :json
 

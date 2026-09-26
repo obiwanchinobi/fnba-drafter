@@ -10,6 +10,7 @@ import TableRow from '@mui/material/TableRow'
 import TableSortLabel from '@mui/material/TableSortLabel'
 import Typography from '@mui/material/Typography'
 import { useEffect, useRef, type ComponentProps } from 'react'
+import type { DraftPick } from '../api/draft.ts'
 import {
   DEFAULT_PROJECTION_SEASON,
   type Dataset,
@@ -125,6 +126,17 @@ const COLUMNS: Column[] = [
   { id: 'pts', label: 'PTS', sortColumn: 'pts', numeric: true },
   { id: 'ppm', label: 'PPM', sortColumn: 'ppm', numeric: true },
 ]
+
+// Draft night only: slots in after Team when a drafted map is supplied.
+const DRAFTED_COLUMN: Column = { id: 'drafted', label: 'Drafted' }
+
+function draftedLabel(
+  row: Projection,
+  drafted: Map<number, DraftPick> | null,
+): string {
+  const pick = drafted?.get(row.player_id)
+  return pick ? `#${pick.overall_pick} ${pick.team}` : ''
+}
 
 const STICKY_LEFT = { player: 0, pos: 168, team: 240 } as const
 const STICKY_MIN_WIDTH = { player: 168, pos: 72, team: 64 } as const
@@ -488,6 +500,7 @@ type ProjectionsTableProps = {
   zScores?: ZScoresResult | null
   weighted?: WeightedColumns | null
   heatmap?: boolean
+  drafted?: Map<number, DraftPick> | null
 }
 
 export default function ProjectionsTable({
@@ -502,12 +515,15 @@ export default function ProjectionsTable({
   zScores = null,
   weighted = null,
   heatmap = false,
+  drafted = null,
 }: ProjectionsTableProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const visibleColumns = COLUMNS.filter(
     (column) =>
       (view === 'z' || !column.zOnly) &&
       (!column.weightedOnly || (view === 'z' && weighted != null)),
+  ).flatMap((column) =>
+    drafted != null && column.id === 'team' ? [column, DRAFTED_COLUMN] : [column],
   )
   const showDeltaCaption =
     dataset === 'projection' && view === 'values' && basis === 'per_game'
@@ -593,8 +609,13 @@ export default function ProjectionsTable({
               ) : null}
               {virtualItems.map((virtualRow) => {
                 const row = rows[virtualRow.index]
+                const isDrafted = drafted?.has(row.player_id) ?? false
                 return (
-                  <TableRow key={row.id}>
+                  <TableRow
+                    key={row.id}
+                    data-drafted={isDrafted ? 'true' : undefined}
+                    sx={isDrafted ? { opacity: 0.45 } : undefined}
+                  >
                     {visibleColumns.map((column) => {
                       const estimated =
                         dataset === 'projection' &&
@@ -617,15 +638,17 @@ export default function ProjectionsTable({
                               : undefined
                           }
                         >
-                          {formatCell(
-                            row,
-                            column.id,
-                            dataset,
-                            view,
-                            zScores,
-                            basis,
-                            weighted,
-                          )}
+                          {column.id === 'drafted'
+                            ? draftedLabel(row, drafted)
+                            : formatCell(
+                                row,
+                                column.id,
+                                dataset,
+                                view,
+                                zScores,
+                                basis,
+                                weighted,
+                              )}
                           {view === 'z' && isScoredCat(column.id) ? (
                             <Typography
                               component="span"

@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useSearchParams } from 'react-router'
 import Alert from '@mui/material/Alert'
 import Chip from '@mui/material/Chip'
 import Container from '@mui/material/Container'
 import Stack from '@mui/material/Stack'
 import Typography from '@mui/material/Typography'
+import type { DraftPick } from '../api/draft.ts'
 import {
   DEFAULT_PROJECTION_SEASON,
   DEFAULT_PROJECTION_SOURCE,
@@ -199,7 +200,21 @@ function withoutWeightedSort(
   return TOTAL_SORT
 }
 
-export default function ProjectionsPage() {
+type ProjectionsPageProps = {
+  title?: string
+  panel?: ReactNode
+  drafted?: Map<number, DraftPick>
+  hideDrafted?: boolean
+  defaultView?: StatView
+}
+
+export default function ProjectionsPage({
+  title = '2026–27 projections',
+  panel,
+  drafted,
+  hideDrafted = false,
+  defaultView,
+}: ProjectionsPageProps = {}) {
   const [searchParams, setSearchParams] = useSearchParams()
   const setSearchParamsRef = useRef(setSearchParams)
   // Latest setter, so a handler that awaits still merges onto the current query.
@@ -237,6 +252,27 @@ export default function ProjectionsPage() {
       { replace: true },
     )
   }
+
+  // A page that opens on z (draft night) seeds the query once, on mount,
+  // only when the URL carries no view; a shared link keeps its own view and
+  // the ref stops a later switch back to values from re-seeding.
+  const hasViewParam = searchParams.get('view') != null
+  const seededDefaultView = useRef(false)
+  useEffect(() => {
+    if (defaultView !== 'z' || hasViewParam || seededDefaultView.current) return
+    seededDefaultView.current = true
+    setSearchParamsRef.current(
+      (prev) => {
+        const current = parseProjectionsSearch(prev)
+        return serializeProjectionsSearch({
+          ...current,
+          view: 'z',
+          sort: current.weights === 'default' ? TOTAL_SORT : WEIGHTED_SORT,
+        })
+      },
+      { replace: true },
+    )
+  }, [defaultView, hasViewParam])
 
   const [source, setSource] = useState(DEFAULT_PROJECTION_SOURCE)
   const [rows, setRows] = useState<Projection[]>([])
@@ -375,7 +411,8 @@ export default function ProjectionsPage() {
       (row) =>
         playerMatchesSearch(row.full_name, search) &&
         playerMatchesPosition(row.positions, position) &&
-        playerMatchesTeams(row.nba_team, teams),
+        playerMatchesTeams(row.nba_team, teams) &&
+        !(hideDrafted && drafted?.has(row.player_id)),
     )
     if (!sort) return filtered
     return [...filtered].sort((a, b) => {
@@ -403,6 +440,8 @@ export default function ProjectionsPage() {
     search,
     position,
     teams,
+    hideDrafted,
+    drafted,
     sort,
     view,
     basis,
@@ -507,7 +546,7 @@ export default function ProjectionsPage() {
       <Stack spacing={2}>
         <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center' }}>
           <Typography variant="h4" component="h1">
-            2026–27 projections
+            {title}
           </Typography>
           <Chip
             data-testid="dataset-chip"
@@ -516,6 +555,7 @@ export default function ProjectionsPage() {
             size="small"
           />
         </Stack>
+        {panel}
         <ProjectionsToolbar
           source={source}
           onSourceChange={setSource}
@@ -570,6 +610,7 @@ export default function ProjectionsPage() {
               zScores={zScores}
               weighted={weighted}
               heatmap={heat}
+              drafted={drafted}
               emptyMessage={
                 rows.length === 0
                   ? dataset === 'actual'
@@ -580,7 +621,7 @@ export default function ProjectionsPage() {
             />
             {view === 'z' ? (
               <Typography variant="caption">
-                {`Z-scores vs the top ${zScores.poolSize} rostered players (8 teams × 16 roster spots, ≥ 20 GP). TO and PF are reversed so positive is better.${
+                {`Z-scores vs the top ${zScores.poolSize} rostered players (8 teams × 17 roster spots, ≥ 20 GP). TO and PF are reversed so positive is better.${
                   weighted
                     ? ` Weighted Z applies "${weighted.name}"; Total Z uses equal weights; Δ Rank is places gained under the collection.`
                     : ''

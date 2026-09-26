@@ -2,8 +2,10 @@
 # Source: ESPN mSettings 2026-09-21 and docs/context/product-vision.md.
 module League
   TEAM_COUNT = 8
-  ROUNDS = 16
+  ROUNDS = 17
   USER_TEAM = "Team Chino"
+  # ESPN team id for Team Chino in league 43046 (mTeam view, 2026-09-26).
+  USER_ESPN_TEAM_ID = 5
   TEAMS = [
     "Adam's All Stars",
     "Double Pump Fake",
@@ -44,6 +46,6 @@ module League
     "UTIL" => %w[PG SG SF PF C].freeze,
     "BENCH" => %w[PG SG SF PF C].freeze
   }.freeze
-  POOL_SIZE = 128
+  POOL_SIZE = TEAM_COUNT * ROUNDS
   POOL_MIN_GP = 20
 end

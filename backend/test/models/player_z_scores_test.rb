@@ -28,7 +28,7 @@ class PlayerZScoresTest < ActiveSupport::TestCase
       row(2, blk: BigDecimal("160")),
       row(3, blk: BigDecimal("240"))
     ]
-    scores = PlayerZScores.new(rows, pool_size: 128, pool_min_gp: 20)
+    scores = PlayerZScores.new(rows, pool_size: 136, pool_min_gp: 20)
     per_game_values = [ 1, 2, 3 ]
 
     assert_equal 3, scores.pool_size
@@ -43,7 +43,7 @@ class PlayerZScoresTest < ActiveSupport::TestCase
       row(2, to: 160, pf: 160),
       row(3, to: 240, pf: 240)
     ]
-    scores = PlayerZScores.new(rows, pool_size: 128, pool_min_gp: 20)
+    scores = PlayerZScores.new(rows, pool_size: 136, pool_min_gp: 20)
     values = [ 1, 2, 3 ]
 
     assert_in_delta population_z(values, 1, true), scores.for(1)[:cats][:to], 1e-9
@@ -59,7 +59,7 @@ class PlayerZScoresTest < ActiveSupport::TestCase
       row(3, fgm: 0, fga: 0),
       row(4, fgm: nil, fga: nil)
     ]
-    scores = PlayerZScores.new(rows, pool_size: 128, pool_min_gp: 20)
+    scores = PlayerZScores.new(rows, pool_size: 136, pool_min_gp: 20)
     # Same z as per-game impacts [-1.5, 1.5, 0]; a 0-attempt row stays in the pool.
     impacts = [ -1.5, 1.5, 0 ]
 
@@ -72,7 +72,7 @@ class PlayerZScoresTest < ActiveSupport::TestCase
 
   test "sd of 0 yields z of 0, not NaN" do
     rows = [ row(1, blk: 40), row(2, blk: 40) ]
-    scores = PlayerZScores.new(rows, pool_size: 128, pool_min_gp: 20)
+    scores = PlayerZScores.new(rows, pool_size: 136, pool_min_gp: 20)
     blk_z = scores.for(1)[:cats][:blk]
 
     assert_in_delta 0, blk_z, 1e-9
@@ -83,7 +83,7 @@ class PlayerZScoresTest < ActiveSupport::TestCase
   test "total z is nil when any cat z is nil, and the sum otherwise" do
     complete = PlayerZScores.new(
       [ row(1, blk: 80), row(2, blk: 160) ],
-      pool_size: 128,
+      pool_size: 136,
       pool_min_gp: 20
     )
     first = complete.for(1)
@@ -94,7 +94,7 @@ class PlayerZScoresTest < ActiveSupport::TestCase
 
     missing = PlayerZScores.new(
       [ row(1, pts: nil), row(2) ],
-      pool_size: 128,
+      pool_size: 136,
       pool_min_gp: 20
     )
     assert_nil missing.for(1)[:cats][:pts]
@@ -141,7 +141,7 @@ class PlayerZScoresTest < ActiveSupport::TestCase
       td: 2,
       pts: 540
     )
-    scores = PlayerZScores.new([ high_gp, low_gp ], pool_size: 128, pool_min_gp: 20)
+    scores = PlayerZScores.new([ high_gp, low_gp ], pool_size: 136, pool_min_gp: 20)
 
     assert_in_delta 1, scores.for(1)[:cats][:pts], 1e-9
     assert_in_delta(-1, scores.for(2)[:cats][:pts], 1e-9)
@@ -152,7 +152,7 @@ class PlayerZScoresTest < ActiveSupport::TestCase
       row(1, blk: Float::NAN),
       row(2, fga: BigDecimal("Infinity"))
     ]
-    scores = PlayerZScores.new(rows, pool_size: 128, pool_min_gp: 20)
+    scores = PlayerZScores.new(rows, pool_size: 136, pool_min_gp: 20)
 
     assert_nil scores.for(1)[:cats][:blk]
     assert_nil scores.for(1)[:total]

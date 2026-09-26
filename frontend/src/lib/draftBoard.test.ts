@@ -19,9 +19,9 @@ function pick(
   }
 }
 
-test('grid is 16 x 8', () => {
-  const grid = picksToGrid([], 8, 16)
-  expect(grid).toHaveLength(16)
+test('grid is 17 x 8', () => {
+  const grid = picksToGrid([], 8, 17)
+  expect(grid).toHaveLength(17)
   for (const row of grid) {
     expect(row).toHaveLength(8)
     expect(row.every((cell) => cell == null)).toBe(true)
@@ -47,7 +47,7 @@ test('places snake picks in the cells their round and slot name', () => {
     slot: 7,
     full_name: 'Tenth Pick',
   })
-  const grid = picksToGrid([tenth, first, ninth], 8, 16)
+  const grid = picksToGrid([tenth, first, ninth], 8, 17)
 
   expect(grid[0]?.[0]).toMatchObject({
     overall_pick: 1,
@@ -77,7 +77,7 @@ test('trusts pick.round and pick.slot instead of re-deriving the snake', () => {
     full_name: 'Trust The Slot',
     player_id: 99,
   })
-  const grid = picksToGrid([labeled], 8, 16)
+  const grid = picksToGrid([labeled], 8, 17)
 
   expect(grid[1]?.[7]?.full_name).toBe('Trust The Slot')
   expect(grid[0]?.[0]).toBeNull()
@@ -87,7 +87,7 @@ test('a hole in the picks leaves a null cell', () => {
   const grid = picksToGrid(
     [pick({ overall_pick: 1, round: 1, slot: 1, full_name: 'Only Pick' })],
     8,
-    16,
+    17,
   )
 
   expect(grid[0]?.[0]?.full_name).toBe('Only Pick')
@@ -99,15 +99,15 @@ test('ignores picks whose round or slot is outside the grid', () => {
   const grid = picksToGrid(
     [
       pick({ overall_pick: 1, round: 1, slot: 1, full_name: 'Kept' }),
-      pick({ overall_pick: 200, round: 17, slot: 1, full_name: 'Past Last Round' }),
+      pick({ overall_pick: 200, round: 18, slot: 1, full_name: 'Past Last Round' }),
       pick({ overall_pick: 201, round: 1, slot: 9, full_name: 'Past Last Slot' }),
       pick({ overall_pick: 202, round: 0, slot: 1, full_name: 'Zero Round' }),
     ],
     8,
-    16,
+    17,
   )
 
-  expect(grid).toHaveLength(16)
+  expect(grid).toHaveLength(17)
   expect(grid[0]).toHaveLength(8)
   expect(grid[0]?.[0]?.full_name).toBe('Kept')
   expect(grid.flat().some((cell) => cell?.full_name === 'Past Last Round')).toBe(

@@ -120,7 +120,7 @@ class MockDraftTest < ActiveSupport::TestCase
     assert draft.errors[:policy].any?
   end
 
-  test "simulate! creates eight runs of 128 picks and records projection_imported_at" do
+  test "simulate! creates eight runs of 136 picks and records projection_imported_at" do
     early = Time.utc(2026, 9, 1, 12, 0, 0)
     latest = Time.utc(2026, 9, 22, 3, 0, 0)
 
@@ -132,7 +132,7 @@ class MockDraftTest < ActiveSupport::TestCase
       injury_status: "OUT",
       estimated_stat_keys: %w[dd td]
     )
-    124.times do |offset|
+    132.times do |offset|
       create_draftable(imported_at: early, espn_roto_rank: offset + 3)
     end
     standout = create_draftable(imported_at: early, espn_roto_rank: 400, pts: 9_000)
@@ -163,13 +163,13 @@ class MockDraftTest < ActiveSupport::TestCase
 
     sequences = runs.map { |run| run.picks.order(:overall_pick).pluck(:player_id) }
     assert_equal 1, sequences.uniq.size
-    assert_equal (1..128).to_a, runs[0].picks.order(:overall_pick).pluck(:overall_pick)
+    assert_equal (1..136).to_a, runs[0].picks.order(:overall_pick).pluck(:overall_pick)
 
     picked = sequences.first
     assert_equal standout.id, picked[0]
     assert_equal rank_one.id, picked[1]
     assert_equal rank_two.id, picked[2]
-    assert_equal nil_rank.id, picked[127]
+    assert_equal nil_rank.id, picked[135]
     assert_not_includes picked, low_gp.id
     assert_not_includes picked, other_source.id
     assert_not_includes picked, other_season.id
@@ -193,7 +193,7 @@ class MockDraftTest < ActiveSupport::TestCase
     assert z_totals.all? { |total| !total.nil? }
     assert_operator z_totals[0], :>, z_totals[1]
     assert_in_delta z_totals[1].to_f, z_totals[2].to_f, 1e-6
-    assert_in_delta z_totals[1].to_f, z_totals[127].to_f, 1e-6
+    assert_in_delta z_totals[1].to_f, z_totals[135].to_f, 1e-6
 
     sixth = runs[5]
     assert_equal League::TEAMS, sixth.draft_order
@@ -225,8 +225,8 @@ class MockDraftTest < ActiveSupport::TestCase
 
   test "simulate! with a weight set ranks only Team Chino by that collection" do
     star = create_draftable(full_name: "Total Star", pts: 2_000, blk: 20, espn_roto_rank: 1)
-    high_blocks = Array.new(64) { |index| create_draftable(blk: 60, espn_roto_rank: 100 + index) }
-    low_blocks = Array.new(64) { |index| create_draftable(blk: 20, espn_roto_rank: 200 + index) }
+    high_blocks = Array.new(68) { |index| create_draftable(blk: 60, espn_roto_rank: 100 + index) }
+    low_blocks = Array.new(68) { |index| create_draftable(blk: 20, espn_roto_rank: 200 + index) }
     specialist = create_draftable(full_name: "Block Specialist", pts: 100, blk: 100, espn_roto_rank: 900)
     incomplete = create_draftable(full_name: "Missing Points", pts: nil, blk: 9_000, espn_roto_rank: 1)
 
@@ -289,8 +289,8 @@ class MockDraftTest < ActiveSupport::TestCase
     end
   end
 
-  test "simulate! raises BoardTooSmall when fewer than 128 players are draftable" do
-    127.times { |index| create_draftable(espn_roto_rank: index + 1) }
+  test "simulate! raises BoardTooSmall when fewer than 136 players are draftable" do
+    135.times { |index| create_draftable(espn_roto_rank: index + 1) }
     create_draftable(gp: 19, espn_roto_rank: 1_000)
     create_draftable(missing_stat_keys: %w[oreb], espn_roto_rank: 1_001)
     create_draftable(pts: nil, espn_roto_rank: 1_002)

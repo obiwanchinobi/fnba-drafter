@@ -30,7 +30,7 @@ export type WeightSearchList = {
 
 const ERROR_MESSAGES: Record<string, string> = {
   board_too_small:
-    'Not enough draftable players to fill 8 teams × 16 rounds',
+    'Not enough draftable players to fill 8 teams × 17 rounds',
   invalid_slot: 'Draft slot must be a whole number from 1 to 8',
 }
 

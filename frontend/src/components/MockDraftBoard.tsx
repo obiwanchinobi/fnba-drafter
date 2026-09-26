@@ -6,9 +6,7 @@ import TableContainer from '@mui/material/TableContainer'
 import TableHead from '@mui/material/TableHead'
 import TableRow from '@mui/material/TableRow'
 import { formatPick, picksToGrid, type DraftRunView } from '../lib/draftBoard.ts'
-
-const DRAFT_SLOTS = 8
-const DRAFT_ROUNDS = 16
+import { ROSTER_SIZE, TEAM_COUNT } from '../lib/league.ts'
 
 type Props = {
   run: DraftRunView
@@ -27,7 +25,7 @@ function highlightSx(isUser: boolean) {
 }
 
 export default function MockDraftBoard({ run, userTeam }: Props) {
-  const grid = picksToGrid(run.picks, DRAFT_SLOTS, DRAFT_ROUNDS)
+  const grid = picksToGrid(run.picks, TEAM_COUNT, ROSTER_SIZE)
 
   return (
     <TableContainer
@@ -38,7 +36,7 @@ export default function MockDraftBoard({ run, userTeam }: Props) {
       <Table size="small" aria-label="Mock draft board">
         <TableHead>
           <TableRow>
-            {Array.from({ length: DRAFT_SLOTS }, (_, index) => {
+            {Array.from({ length: TEAM_COUNT }, (_, index) => {
               const slot = index + 1
               const team = run.draft_order[index] ?? ''
               const isUser = isUserColumn(team, userTeam)

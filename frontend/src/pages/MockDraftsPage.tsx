@@ -332,7 +332,7 @@ export default function MockDraftsPage() {
               )}{' '}
               This snapshot shows which slot wins, and where {detail.user_team}{' '}
               finishes from that slot.
-              Projected roto standings, all 16 rostered players, no injury or
+              Projected roto standings, all 17 rostered players, no injury or
               lineup modelling.
             </Typography>
             {detail.weights != null ? (

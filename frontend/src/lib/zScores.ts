@@ -3,10 +3,12 @@
  * Formula: docs/context/20260912-131755-draft-night-analysis-and-requirements.md
  * sections 3.2–3.3.
  *
- * POOL_SIZE = 128 = 8 teams × 16 roster spots (IR excluded; ESPN mSettings 2026-09-21).
+ * POOL_SIZE = 136 = 8 teams × 17 roster spots (IR excluded; ESPN mSettings 2026-09-21),
+ * shared from ./league.ts and re-exported here for existing imports.
  * POOL_MIN_GP = 20, the games-played floor for the rostered-player pool.
  */
 import type { Projection } from '../api/projections.ts'
+import { POOL_SIZE } from './league.ts'
 import {
   SCORED_CAT_IDS,
   SCORED_CATS,
@@ -17,7 +19,7 @@ import {
   type ScoredCat,
 } from './statBasis.ts'
 
-export const POOL_SIZE = 128
+export { POOL_SIZE }
 export const POOL_MIN_GP = 20
 
 export type PlayerZScores = {

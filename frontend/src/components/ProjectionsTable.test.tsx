@@ -1293,6 +1293,81 @@ test('heatmap off leaves z cells unpainted', () => {
   )
 })
 
+test('Drafted column is absent without the drafted prop', () => {
+  renderTable(
+    <ProjectionsTable
+      rows={[jokic]}
+      sortBy={null}
+      sortDirection="desc"
+      onSort={() => {}}
+      emptyMessage="none"
+    />,
+  )
+
+  const { headers } = cellsFor('Nikola Jokic')
+  expect(headers).not.toContain('Drafted')
+  expect(screen.getByText('Nikola Jokic').closest('tr')).not.toHaveAttribute(
+    'data-drafted',
+  )
+})
+
+test('Drafted column follows Team, shows the pick and greys drafted rows', () => {
+  const tatum: Projection = {
+    ...jokic,
+    id: 2,
+    player_id: 2,
+    espn_player_id: 4065648,
+    first_name: 'Jayson',
+    last_name: 'Tatum',
+    full_name: 'Jayson Tatum',
+    positions: ['SF', 'PF'],
+    nba_team: 'BOS',
+  }
+  const drafted = new Map([
+    [
+      1,
+      {
+        overall_pick: 1,
+        round: 1,
+        slot: 1,
+        team: 'Trust in Pizza',
+        espn_team_id: 4,
+        espn_player_id: 3112335,
+        player_id: 1,
+        full_name: 'Nikola Jokic',
+        positions: ['C'],
+        nba_team: 'DEN',
+        injury_status: null,
+      },
+    ],
+  ])
+
+  renderTable(
+    <ProjectionsTable
+      rows={[jokic, tatum]}
+      sortBy={null}
+      sortDirection="desc"
+      onSort={() => {}}
+      emptyMessage="none"
+      drafted={drafted}
+    />,
+  )
+
+  const { headers } = cellsFor('Nikola Jokic')
+  expect(headers.indexOf('Drafted')).toBe(headers.indexOf('Team') + 1)
+  expect(cellText('Nikola Jokic', 'Drafted')).toHaveTextContent(
+    '#1 Trust in Pizza',
+  )
+  expect(screen.getByText('Nikola Jokic').closest('tr')).toHaveAttribute(
+    'data-drafted',
+    'true',
+  )
+  expect(cellText('Jayson Tatum', 'Drafted').textContent).toBe('')
+  expect(screen.getByText('Jayson Tatum').closest('tr')).not.toHaveAttribute(
+    'data-drafted',
+  )
+})
+
 test('values view ignores heatmap', () => {
   renderTable(
     <ProjectionsTable

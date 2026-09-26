@@ -268,6 +268,74 @@ test('renders weights at /weights with only that tab selected', async () => {
   expect(screen.getByTestId('location')).toHaveTextContent(/^\/weights$/)
 })
 
+function stubDraftFetch() {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input) === '/api/draft') {
+        return {
+          ok: true,
+          json: async () => ({
+            season: 2027,
+            draft_order: [],
+            user_team: 'Team Chino',
+            user_espn_team_id: 5,
+            in_progress: false,
+            drafted: false,
+            refreshed_at: null,
+            picks: [],
+          }),
+        }
+      }
+      return { ok: true, json: async () => [] }
+    }),
+  )
+}
+
+test('renders the draft page at /draft with only that tab selected', async () => {
+  stubDraftFetch()
+
+  renderApp(<App />, ['/draft'])
+
+  expect(
+    await screen.findByRole('heading', { name: 'Draft night' }),
+  ).toBeInTheDocument()
+  expect(screen.getByRole('tab', { name: 'Draft' })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  )
+  expect(screen.getByRole('tab', { name: 'Draft' })).toHaveAttribute(
+    'href',
+    '/draft',
+  )
+  expect(screen.getByRole('tab', { name: 'Projections' })).toHaveAttribute(
+    'aria-selected',
+    'false',
+  )
+  expect(screen.getByRole('tab', { name: 'Mock drafts' })).toHaveAttribute(
+    'aria-selected',
+    'false',
+  )
+  expect(screen.getByTestId('location')).toHaveTextContent(/^\/draft$/)
+})
+
+test('opens the draft page from the tab', async () => {
+  stubDraftFetch()
+
+  renderApp(<App />)
+  fireEvent.click(screen.getByRole('tab', { name: 'Draft' }))
+
+  expect(
+    await screen.findByRole('heading', { name: 'Draft night' }),
+  ).toBeInTheDocument()
+  expect(
+    screen.queryByRole('heading', { name: '2026–27 projections' }),
+  ).not.toBeInTheDocument()
+  await waitFor(() => {
+    expect(screen.getByTestId('location')).toHaveTextContent(/^\/draft$/)
+  })
+})
+
 test('renders an error when the projections request fails', async () => {
   vi.stubGlobal(
     'fetch',

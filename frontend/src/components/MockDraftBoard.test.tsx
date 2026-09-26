@@ -54,7 +54,7 @@ test('a pick shows in the right round and slot cell', () => {
   renderBoard(<MockDraftBoard run={runWith([lateWing])} userTeam="Team Chino" />)
 
   const rows = screen.getAllByRole('row')
-  expect(rows).toHaveLength(17)
+  expect(rows).toHaveLength(18)
 
   const round2 = within(rows[2]).getAllByRole('cell')
   expect(round2).toHaveLength(8)
