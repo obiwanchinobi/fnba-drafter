@@ -81,6 +81,7 @@ For substantive workflow updates, run these cases in disposable worktrees on the
 | Two actioned rows sharing a file | Later row `Depends on` the earlier; they are never in the same batch |
 | Meta-doc-only row | Direct-apply on the orchestrator branch; no worktree spawn |
 | Mixed meta-doc + code row | Stops at routing; asks to split |
+| Isolation worktree forked from a commit other than the orchestrator's HEAD | Implementer's first step aligns its own worktree to `batch_base_sha` (clean tree only), then implements; the commit cherry-picks onto the orchestrator branch |
 | Isolation unavailable for a code row | Stops; does not implement on the orchestrator branch |
 | Clean parallel batch | One commit per worktree; serial cherry-pick in table order; ephemeral `Commit` cells filled (no trailer) |
 | Stale-base cherry-pick | Abort, one re-dispatch from current HEAD, second conflict stops |

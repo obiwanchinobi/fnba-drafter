@@ -26,6 +26,28 @@ export const SCORED_CAT_IDS = [
 
 export type ScoredCat = (typeof SCORED_CAT_IDS)[number]
 
+export const SCORED_CAT_LABELS: Record<ScoredCat, string> = {
+  fgm: 'FGM',
+  fg_pct: 'FG%',
+  ftm: 'FTM',
+  ft_pct: 'FT%',
+  tpm: '3PM',
+  tp_pct: '3P%',
+  oreb: 'OREB',
+  dreb: 'DREB',
+  ast: 'AST',
+  ato: 'A/TO',
+  stl: 'STL',
+  str: 'STR',
+  blk: 'BLK',
+  to: 'TO',
+  pf: 'PF',
+  dd: 'DD',
+  td: 'TD',
+  pts: 'PTS',
+  ppm: 'PPM',
+}
+
 type NumericField = {
   [K in keyof Projection]: Projection[K] extends number | null ? K : never
 }[keyof Projection]

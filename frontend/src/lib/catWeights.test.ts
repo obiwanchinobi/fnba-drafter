@@ -3,6 +3,7 @@ import {
   DEFAULT_WEIGHTS,
   isDefaultWeights,
   rankByValue,
+  relativeWeights,
   weightedTotalZ,
   type CatWeights,
 } from './catWeights.ts'
@@ -72,4 +73,41 @@ test('isDefaultWeights is true for DEFAULT_WEIGHTS and false when any cat differ
   expect(isDefaultWeights(DEFAULT_WEIGHTS)).toBe(true)
   expect(isDefaultWeights({ ...DEFAULT_WEIGHTS })).toBe(true)
   expect(isDefaultWeights({ ...DEFAULT_WEIGHTS, pf: 0.8 })).toBe(false)
+})
+
+test('relativeWeights divides each weight by the mean of the scored weights', () => {
+  expect(relativeWeights(DEFAULT_WEIGHTS)).toEqual(DEFAULT_WEIGHTS)
+
+  // 18 cats at 1 and blk at 20: sum 38, mean 2.
+  const weights: CatWeights = { ...DEFAULT_WEIGHTS, blk: 20 }
+  const relative = relativeWeights(weights)
+  expect(relative.blk).toBeCloseTo(10)
+  expect(relative.pts).toBeCloseTo(0.5)
+  expect(Object.keys(relative).sort()).toEqual([...SCORED_CAT_IDS].sort())
+})
+
+test('relativeWeights is unchanged by scaling every weight', () => {
+  const weights: CatWeights = { ...DEFAULT_WEIGHTS, blk: 2.5, to: 0.35 }
+  const scaled = {} as CatWeights
+  for (const cat of SCORED_CAT_IDS) scaled[cat] = weights[cat] * 3
+  const a = relativeWeights(weights)
+  const b = relativeWeights(scaled)
+  for (const cat of SCORED_CAT_IDS) {
+    expect(a[cat]).not.toBeNull()
+    expect(b[cat]).toBeCloseTo(a[cat] as number)
+  }
+})
+
+test('relativeWeights returns null per cat when the mean is zero or a weight is missing', () => {
+  const zero = {} as CatWeights
+  for (const cat of SCORED_CAT_IDS) zero[cat] = 0
+  for (const value of Object.values(relativeWeights(zero))) {
+    expect(value).toBeNull()
+  }
+
+  const missing = { ...DEFAULT_WEIGHTS } as Partial<CatWeights>
+  delete missing.pts
+  for (const value of Object.values(relativeWeights(missing as CatWeights))) {
+    expect(value).toBeNull()
+  }
 })

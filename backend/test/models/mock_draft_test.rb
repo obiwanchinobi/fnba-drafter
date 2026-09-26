@@ -303,6 +303,30 @@ class MockDraftTest < ActiveSupport::TestCase
     assert_equal 0, MockDraft.count
   end
 
+  test "draftable_board keeps each entry's per-category z-scores for weight searches" do
+    create_draftable(pts: 2_000, espn_roto_rank: 1)
+    create_draftable(blk: 90, espn_roto_rank: 2)
+    create_draftable(missing_stat_keys: %w[pts], espn_roto_rank: 3)
+    projections = PlayerProjection.includes(:player).where(source: "espn", season: Espn::SEASON).to_a
+    weights = WeightSet::CATEGORIES.index_with { |cat| cat == "blk" ? 2.0 : 0.5 }
+
+    board = MockDraft.draftable_board(projections, weights)
+
+    assert_equal 2, board.size
+    board.each do |entry|
+      assert_equal %i[cats player_id positions value weighted_value], entry.keys.sort
+      assert_equal PlayerZScores::CAT_IDS.sort, entry[:cats].keys.sort
+      assert_in_delta entry[:cats].values.sum, entry[:value], 1e-9
+      expected = PlayerZScores::CAT_IDS.sum { |cat| weights.fetch(cat.to_s) * entry[:cats][cat] }
+      assert_in_delta expected, entry[:weighted_value], 1e-9
+    end
+
+    copy = MockDraft.duplicate_board(board)
+    copy.first[:positions] << "X"
+    assert_not_includes board.first[:positions], "X"
+    assert_same board.first[:cats], copy.first[:cats]
+  end
+
   private
     def first_player_by_team(run)
       run.picks.order(:overall_pick).each_with_object({}) do |pick, first|

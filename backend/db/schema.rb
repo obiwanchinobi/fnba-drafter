@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_23_223409) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_26_110000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -132,6 +132,33 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_23_223409) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.index ["espn_player_id"], name: "index_players_on_espn_player_id", unique: true, where: "(espn_player_id IS NOT NULL)"
+  end
+
+  create_table "weight_search_runs", force: :cascade do |t|
+    t.integer "user_slot", null: false
+    t.string "weight_set_name", null: false
+    t.jsonb "weights", null: false
+    t.integer "rank", null: false
+    t.decimal "roto_points", null: false
+    t.decimal "margin", null: false
+    t.boolean "won", null: false
+    t.text "draft_order", null: false, array: true
+    t.jsonb "standings", null: false
+    t.jsonb "picks", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.integer "budget"
+    t.bigint "seed"
+    t.string "source"
+    t.integer "season"
+    t.datetime "projection_imported_at"
+    t.decimal "win_rate"
+    t.decimal "mean_margin"
+    t.decimal "worst_margin"
+    t.jsonb "margins"
+    t.integer "scenario_count"
+    t.decimal "noise_sd"
+    t.index ["user_slot"], name: "index_weight_search_runs_on_user_slot", unique: true
   end
 
   create_table "weight_sets", force: :cascade do |t|

@@ -52,9 +52,8 @@ class MockDraft < ApplicationRecord
     )
     projections.filter_map { |projection| draftable_entry(projection, scores, weights) }
       .sort_by { |entry| entry_sort_key(entry) }
-      .map { |entry| entry.slice(:player_id, :positions, :value, :weighted_value) }
+      .map { |entry| entry.slice(:player_id, :positions, :value, :weighted_value, :cats) }
   end
-  private_class_method :draftable_board
 
   def self.draftable_entry(projection, scores, weights = nil)
     return nil if Array(projection.missing_stat_keys).any?
@@ -68,6 +67,7 @@ class MockDraft < ApplicationRecord
       positions: Array(projection.player.positions).dup,
       value: scored[:total],
       weighted_value: weighted_value_for(scored, weights),
+      cats: scored[:cats],
       espn_roto_rank: projection.espn_roto_rank
     }
   end
@@ -104,12 +104,10 @@ class MockDraft < ApplicationRecord
 
   def self.persist_runs!(draft, board, projections)
     by_player_id = projections.index_by(&:player_id)
-    ranking = draft.weights.nil? ? nil : { League::USER_TEAM => :weighted_value }
+    orders = team_orders(board, draft.weights.nil? ? board : weighted_order(board))
     1.upto(League::TEAM_COUNT) do |user_slot|
       order = draft_order_for(user_slot)
-      snake_kwargs = { order: order, board: duplicate_board(board), rounds: League::ROUNDS }
-      snake_kwargs[:ranking] = ranking unless ranking.nil?
-      picks = SnakeDraft.new(**snake_kwargs).picks
+      picks = SnakeDraft.new(order: order, orders: orders, rounds: League::ROUNDS).picks
       standings = RotoStandings.new(rosters_for(picks, by_player_id)).table
       run = draft.runs.create!(user_slot: user_slot, draft_order: order, standings: standings)
       insert_picks!(run, picks)
@@ -117,12 +115,21 @@ class MockDraft < ApplicationRecord
   end
   private_class_method :persist_runs!
 
+  # Opponents draft the board as sorted; Team Chino drafts `chino_order`.
+  def self.team_orders(board, chino_order)
+    League::TEAMS.to_h { |team| [ team, team == League::USER_TEAM ? chino_order : board ] }
+  end
+
+  # Highest weighted value first; an equal value keeps the earlier board position.
+  def self.weighted_order(board)
+    board.sort_by.with_index { |entry, index| [ -entry[:weighted_value], index ] }
+  end
+
   def self.rosters_for(picks, by_player_id)
     picks.group_by { |pick| pick[:team] }.transform_values do |team_picks|
       team_picks.map { |pick| by_player_id.fetch(pick[:player_id]) }
     end
   end
-  private_class_method :rosters_for
 
   # Team Chino sits at this 1-based slot. The other teams keep TEAMS' circular order.
   def self.draft_order_for(user_slot)
@@ -130,7 +137,6 @@ class MockDraft < ApplicationRecord
     shift = chino - (user_slot - 1)
     Array.new(League::TEAM_COUNT) { |index| League::TEAMS[(index + shift) % League::TEAM_COUNT] }
   end
-  private_class_method :draft_order_for
 
   def self.duplicate_board(board)
     board.map do |entry|
@@ -139,7 +145,6 @@ class MockDraft < ApplicationRecord
       copy
     end
   end
-  private_class_method :duplicate_board
 
   def self.insert_picks!(run, picks)
     now = Time.current

@@ -25,6 +25,7 @@ import {
   type MockDraftSummary,
 } from '../api/mockDrafts.ts'
 import { fetchWeightSets, type WeightSet } from '../api/weightSets.ts'
+import CatWeightsTable from '../components/CatWeightsTable.tsx'
 import MockDraftBoard from '../components/MockDraftBoard.tsx'
 import MockDraftRunsTable from '../components/MockDraftRunsTable.tsx'
 import MockDraftStandings from '../components/MockDraftStandings.tsx'
@@ -334,6 +335,12 @@ export default function MockDraftsPage() {
               Projected roto standings, all 16 rostered players, no injury or
               lineup modelling.
             </Typography>
+            {detail.weights != null ? (
+              <CatWeightsTable
+                weights={detail.weights}
+                label={`${detail.weight_set_name} weights`}
+              />
+            ) : null}
             <MockDraftRunsTable
               runs={detail.runs}
               userTeam={detail.user_team}

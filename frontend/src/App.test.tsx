@@ -153,6 +153,121 @@ test('renders mock drafts at /mock-drafts with that tab selected', async () => {
   expect(screen.getByTestId('location')).toHaveTextContent(/^\/mock-drafts$/)
 })
 
+test('opens the winning weights page from the tab', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => [],
+    }),
+  )
+
+  renderApp(<App />)
+  fireEvent.click(screen.getByRole('tab', { name: 'Winning weights' }))
+
+  expect(
+    await screen.findByRole('heading', { name: 'Winning weights' }),
+  ).toBeInTheDocument()
+  await waitFor(() => {
+    expect(screen.getByTestId('location')).toHaveTextContent(
+      /^\/winning-weights$/,
+    )
+  })
+  expect(screen.getByRole('tab', { name: 'Winning weights' })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  )
+})
+
+test('renders winning weights at /winning-weights with only that tab selected', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => [],
+    }),
+  )
+
+  renderApp(<App />, ['/winning-weights'])
+
+  expect(
+    await screen.findByRole('heading', { name: 'Winning weights' }),
+  ).toBeInTheDocument()
+  expect(screen.getByRole('tab', { name: 'Winning weights' })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  )
+  expect(screen.getByRole('tab', { name: 'Mock drafts' })).toHaveAttribute(
+    'aria-selected',
+    'false',
+  )
+  expect(screen.getByRole('tab', { name: 'Projections' })).toHaveAttribute(
+    'aria-selected',
+    'false',
+  )
+  expect(
+    screen.queryByRole('heading', { name: 'Mock drafts' }),
+  ).not.toBeInTheDocument()
+})
+
+test('opens the weights page from the tab', async () => {
+  const fetchMock = vi.fn().mockResolvedValue({
+    ok: true,
+    json: async () => [],
+  })
+  vi.stubGlobal('fetch', fetchMock)
+
+  renderApp(<App />)
+  fireEvent.click(screen.getByRole('tab', { name: 'Weights' }))
+
+  expect(
+    await screen.findByRole('heading', { name: 'Weights' }),
+  ).toBeInTheDocument()
+  await waitFor(() => {
+    expect(screen.getByTestId('location')).toHaveTextContent(/^\/weights$/)
+  })
+  expect(screen.getByRole('tab', { name: 'Weights' })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  )
+  await waitFor(() => {
+    expect(fetchMock).toHaveBeenCalledWith('/api/weight_sets')
+  })
+})
+
+test('renders weights at /weights with only that tab selected', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => [],
+    }),
+  )
+
+  renderApp(<App />, ['/weights'])
+
+  expect(
+    await screen.findByRole('heading', { name: 'Weights' }),
+  ).toBeInTheDocument()
+  expect(screen.getByRole('tab', { name: 'Weights' })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  )
+  expect(screen.getByRole('tab', { name: 'Winning weights' })).toHaveAttribute(
+    'aria-selected',
+    'false',
+  )
+  expect(screen.getByRole('tab', { name: 'Mock drafts' })).toHaveAttribute(
+    'aria-selected',
+    'false',
+  )
+  expect(screen.getByRole('tab', { name: 'Projections' })).toHaveAttribute(
+    'aria-selected',
+    'false',
+  )
+  expect(screen.getByTestId('location')).toHaveTextContent(/^\/weights$/)
+})
+
 test('renders an error when the projections request fails', async () => {
   vi.stubGlobal(
     'fetch',
