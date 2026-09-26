@@ -157,6 +157,22 @@ function stubProjections(
         sets = [...sets, created]
         return jsonBody(created)
       }
+      if (method === 'PATCH') {
+        const id = Number(url.split('/').pop())
+        const body = JSON.parse(String(init?.body ?? '{}')) as {
+          name?: string
+          weights?: Record<string, number>
+        }
+        const existing = sets.find((set) => set.id === id)
+        const updated = {
+          id,
+          name: body.name ?? existing?.name ?? '',
+          weights: body.weights ?? existing?.weights ?? {},
+          updated_at: '2026-09-23T12:00:00.000Z',
+        }
+        sets = sets.map((set) => (set.id === id ? updated : set))
+        return jsonBody(updated)
+      }
       if (method === 'DELETE') {
         const id = Number(url.split('/').pop())
         sets = sets.filter((set) => set.id !== id)
@@ -1137,14 +1153,16 @@ test('a non-default collection shows weighted z and the rank change beside total
     }),
   ).toBeInTheDocument()
 
-  expect(screen.getByRole('columnheader', { name: 'Total Z' })).toHaveAttribute(
-    'aria-sort',
-    'descending',
-  )
-  expect(playerNames()).toEqual(['Foul Light', 'Foul Heavy'])
-
-  fireEvent.click(screen.getByRole('button', { name: 'Weighted Z' }))
+  expect(
+    screen.getByRole('columnheader', { name: 'Weighted Z' }),
+  ).toHaveAttribute('aria-sort', 'descending')
+  expect(
+    screen.getByRole('columnheader', { name: 'Total Z' }),
+  ).not.toHaveAttribute('aria-sort')
   expect(playerNames()).toEqual(['Foul Heavy', 'Foul Light'])
+  expect(screen.getByTestId('location')).toHaveTextContent(
+    '/projections?view=z&weights=9&sort=z_weighted',
+  )
   expect(cellByHeader('Foul Heavy', 'Δ Rank').textContent).toBe('+1')
   expect(cellByHeader('Foul Light', 'Δ Rank').textContent).toBe('-1')
 
@@ -1260,6 +1278,150 @@ test('saving a collection reloads weight sets and selects the saved name', async
   ])
 })
 
+// Foul Light leads Total Z on fouls; zeroing PF lifts Foul Heavy to the top
+// on blocks.
+const FOUL_ROWS: Projection[] = [
+  projectionRow({
+    id: 1,
+    full_name: 'Foul Light',
+    positions: ['C'],
+    nba_team: 'DEN',
+    pf: 80,
+    blk: 40,
+  }),
+  projectionRow({
+    id: 2,
+    full_name: 'Foul Average',
+    positions: ['SF'],
+    nba_team: 'BOS',
+    pf: 160,
+    blk: 30,
+  }),
+  projectionRow({
+    id: 3,
+    full_name: 'Foul Heavy',
+    positions: ['PG'],
+    nba_team: 'OKC',
+    pf: 240,
+    blk: 80,
+  }),
+]
+
+const BENCH_FOULS = {
+  id: 9,
+  name: 'Bench fouls',
+  weights: { ...DEFAULT_WEIGHTS, pf: 0 },
+  updated_at: '2026-09-22T12:00:00.000Z',
+}
+
+test('saving a collection sorts by Weighted Z', async () => {
+  stubProjections(FOUL_ROWS)
+
+  renderPage(<ProjectionsPage />)
+
+  expect(await screen.findByText('Foul Heavy')).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Z-scores' }))
+  expect(playerNames()).toEqual(['Foul Light', 'Foul Heavy', 'Foul Average'])
+
+  fireEvent.click(screen.getByRole('button', { name: 'New weights' }))
+  const dialog = screen.getByRole('dialog')
+  fireEvent.change(within(dialog).getByLabelText('Name'), {
+    target: { value: 'Punt fouls' },
+  })
+  fireEvent.change(within(dialog).getByLabelText('PF'), {
+    target: { value: '0' },
+  })
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Save' }))
+
+  await waitFor(() => {
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(
+      screen.getByRole('columnheader', { name: 'Weighted Z' }),
+    ).toHaveAttribute('aria-sort', 'descending')
+  })
+  expect(playerNames()).toEqual(['Foul Heavy', 'Foul Light', 'Foul Average'])
+  expect(
+    screen.getByRole('columnheader', { name: 'Total Z' }),
+  ).not.toHaveAttribute('aria-sort')
+  expect(screen.getByTestId('location')).toHaveTextContent(
+    '/projections?view=z&weights=1&sort=z_weighted',
+  )
+})
+
+test('selecting a collection from the Weights select sorts by Weighted Z', async () => {
+  stubProjections(FOUL_ROWS, [BENCH_FOULS])
+
+  renderPage(<ProjectionsPage />)
+
+  expect(await screen.findByText('Foul Heavy')).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Z-scores' }))
+  expect(playerNames()).toEqual(['Foul Light', 'Foul Heavy', 'Foul Average'])
+  expect(screen.getByRole('columnheader', { name: 'Total Z' })).toHaveAttribute(
+    'aria-sort',
+    'descending',
+  )
+
+  fireEvent.mouseDown(screen.getByRole('combobox', { name: /weights/i }))
+  fireEvent.click(await screen.findByRole('option', { name: 'Bench fouls' }))
+
+  expect(playerNames()).toEqual(['Foul Heavy', 'Foul Light', 'Foul Average'])
+  expect(
+    screen.getByRole('columnheader', { name: 'Weighted Z' }),
+  ).toHaveAttribute('aria-sort', 'descending')
+  expect(
+    screen.getByRole('columnheader', { name: 'Total Z' }),
+  ).not.toHaveAttribute('aria-sort')
+  expect(screen.getByTestId('location')).toHaveTextContent(
+    '/projections?view=z&weights=9&sort=z_weighted',
+  )
+})
+
+test('editing the active collection re-sorts by Weighted Z', async () => {
+  const fetchMock = stubProjections(FOUL_ROWS, [BENCH_FOULS])
+
+  renderPage(<ProjectionsPage />, ['/projections?view=z&weights=9&sort=pts'])
+
+  expect(await screen.findByText('Foul Heavy')).toBeInTheDocument()
+  expect(screen.getByRole('combobox', { name: /weights/i })).toHaveTextContent(
+    'Bench fouls',
+  )
+  expect(screen.getByRole('columnheader', { name: /^PTS$/ })).toHaveAttribute(
+    'aria-sort',
+    'descending',
+  )
+  expect(screen.getByTestId('location')).toHaveTextContent(
+    '/projections?view=z&weights=9&sort=pts',
+  )
+
+  fireEvent.click(screen.getByRole('button', { name: 'Edit weights' }))
+  const dialog = screen.getByRole('dialog')
+  expect(within(dialog).getByLabelText('Name')).toHaveValue('Bench fouls')
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Save' }))
+
+  await waitFor(() => {
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(screen.getByTestId('location')).toHaveTextContent(
+      '/projections?view=z&weights=9&sort=z_weighted',
+    )
+  })
+  expect(playerNames()).toEqual(['Foul Heavy', 'Foul Light', 'Foul Average'])
+  expect(
+    screen.getByRole('columnheader', { name: 'Weighted Z' }),
+  ).toHaveAttribute('aria-sort', 'descending')
+  expect(
+    screen.getByRole('columnheader', { name: /^PTS$/ }),
+  ).not.toHaveAttribute('aria-sort')
+  expect(
+    fetchMock.mock.calls
+      .filter(([input]) => String(input).includes('/api/weight_sets'))
+      .map(([input, init]) => [String(input), init?.method ?? 'GET']),
+  ).toEqual([
+    ['/api/weight_sets', 'GET'],
+    ['/api/weight_sets/9', 'PATCH'],
+    ['/api/weight_sets', 'GET'],
+  ])
+})
+
 test('deleting the active collection returns to Default and removes weighted columns', async () => {
   const fetchMock = stubProjections(
     [
@@ -1294,7 +1456,6 @@ test('deleting the active collection returns to Default and removes weighted col
   fireEvent.click(screen.getByRole('button', { name: 'Z-scores' }))
   fireEvent.mouseDown(screen.getByRole('combobox', { name: /weights/i }))
   fireEvent.click(screen.getByRole('option', { name: 'Bench fouls' }))
-  fireEvent.click(screen.getByRole('button', { name: 'Weighted Z' }))
   expect(
     screen.getByRole('columnheader', { name: 'Weighted Z' }),
   ).toHaveAttribute('aria-sort', 'descending')

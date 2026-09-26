@@ -467,18 +467,20 @@ export default function ProjectionsPage() {
     updateUrl((current) => ({ sort: nextSort(current.sort, column) }))
   }
 
+  // A collection chosen from the toolbar opens on Weighted Z, the composite
+  // it changes; returning to Default drops a weighted sort back to Total Z.
   function handleWeightSetChange(next: number | 'default') {
     updateUrl((current) => ({
       weights: next,
       sort:
-        next === 'default' ? withoutWeightedSort(current.sort) : current.sort,
+        next === 'default' ? withoutWeightedSort(current.sort) : WEIGHTED_SORT,
     }))
   }
 
   async function handleWeightsSaved(saved: WeightSet) {
     const list = await fetchWeightSets()
     setWeightSets(list)
-    updateUrl({ weights: saved.id })
+    updateUrl({ weights: saved.id, sort: WEIGHTED_SORT })
     setWeightDialog({ open: false, mode: 'create' })
   }
 
