@@ -40,12 +40,9 @@ class WeightHillClimb
     end
 
     def evaluate(order, weights)
-      picks = SnakeDraft.new(
-        order: order,
-        board: weighted_board(weights),
-        rounds: League::ROUNDS,
-        ranking: { League::USER_TEAM => :weighted_value }
-      ).picks
+      board = weighted_board(weights)
+      orders = MockDraft.team_orders(board, MockDraft.weighted_order(board))
+      picks = SnakeDraft.new(order: order, orders: orders, rounds: League::ROUNDS).picks
       table = RotoStandings.new(MockDraft.rosters_for(picks, @by_player_id)).table
       score(table).merge(weights: weights, picks: picks.map { |pick| pick_row(pick) }, standings: table)
     end

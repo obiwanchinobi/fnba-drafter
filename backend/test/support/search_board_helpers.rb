@@ -44,11 +44,11 @@ module SearchBoardHelpers
     end
 
     def replay_picks(user_slot, weights)
+      board = MockDraft.draftable_board(espn_projections, weights)
       SnakeDraft.new(
         order: MockDraft.draft_order_for(user_slot),
-        board: MockDraft.draftable_board(espn_projections, weights),
-        rounds: League::ROUNDS,
-        ranking: { League::USER_TEAM => :weighted_value }
+        orders: MockDraft.team_orders(board, MockDraft.weighted_order(board)),
+        rounds: League::ROUNDS
       ).picks
     end
 
