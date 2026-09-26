@@ -4,6 +4,8 @@ module League
   TEAM_COUNT = 8
   ROUNDS = 17
   USER_TEAM = "Team Chino"
+  # ESPN team id for Team Chino in league 43046 (mTeam view, 2026-09-26).
+  USER_ESPN_TEAM_ID = 5
   TEAMS = [
     "Adam's All Stars",
     "Double Pump Fake",

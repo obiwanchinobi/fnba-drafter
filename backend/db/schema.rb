@@ -10,9 +10,21 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_26_110000) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_26_212105) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
+
+  create_table "drafts", force: :cascade do |t|
+    t.integer "season", null: false
+    t.text "draft_order", default: [], null: false, array: true
+    t.jsonb "picks", default: [], null: false
+    t.boolean "espn_in_progress", default: false, null: false
+    t.boolean "espn_drafted", default: false, null: false
+    t.datetime "refreshed_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["season"], name: "index_drafts_on_season", unique: true
+  end
 
   create_table "mock_draft_picks", force: :cascade do |t|
     t.bigint "mock_draft_run_id", null: false

@@ -7,6 +7,8 @@ Rails.application.routes.draw do
 
   namespace :api do
     resources :mock_drafts, only: %i[index show create destroy]
+    resource :draft, only: :show
+    post "draft/refresh", to: "drafts#refresh"
     get "status", to: "status#show"
     get "projections", to: "projections#index"
     post "projections/refresh", to: "projections#refresh"

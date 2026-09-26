@@ -1,0 +1,43 @@
+{
+  "id": 43046,
+  "seasonId": 2027,
+  "draftDetail": {
+    "drafted": false,
+    "inProgress": true,
+    "picks": [
+      { "overallPickNumber": 1, "roundId": 1, "roundPickNumber": 1, "teamId": 4, "playerId": 3112335, "lineupSlotId": 4 },
+      { "overallPickNumber": 2, "roundId": 1, "roundPickNumber": 2, "teamId": 9, "playerId": 4395628, "lineupSlotId": 0 },
+      { "overallPickNumber": 3, "roundId": 1, "roundPickNumber": 3, "teamId": 3, "playerId": 999999999, "lineupSlotId": 2 },
+      { "overallPickNumber": 4, "roundId": 1, "roundPickNumber": 4, "teamId": 5, "playerId": 3059318, "lineupSlotId": 1 },
+      { "overallPickNumber": 5, "roundId": 1, "roundPickNumber": 5, "teamId": 7, "playerId": -1, "lineupSlotId": -1 },
+      { "overallPickNumber": 6, "roundId": 1, "roundPickNumber": 6, "teamId": 1, "playerId": -1, "lineupSlotId": -1 },
+      { "overallPickNumber": 7, "roundId": 1, "roundPickNumber": 7, "teamId": 8, "playerId": -1, "lineupSlotId": -1 },
+      { "overallPickNumber": 8, "roundId": 1, "roundPickNumber": 8, "teamId": 2, "playerId": -1, "lineupSlotId": -1 },
+      { "overallPickNumber": 9, "roundId": 2, "roundPickNumber": 1, "teamId": 2, "playerId": -1, "lineupSlotId": -1 },
+      { "overallPickNumber": 10, "roundId": 2, "roundPickNumber": 2, "teamId": 8, "playerId": -1, "lineupSlotId": -1 },
+      { "overallPickNumber": 11, "roundId": 2, "roundPickNumber": 3, "teamId": 1, "playerId": -1, "lineupSlotId": -1 },
+      { "overallPickNumber": 12, "roundId": 2, "roundPickNumber": 4, "teamId": 7, "playerId": -1, "lineupSlotId": -1 },
+      { "overallPickNumber": 13, "roundId": 2, "roundPickNumber": 5, "teamId": 5, "playerId": -1, "lineupSlotId": -1 },
+      { "overallPickNumber": 14, "roundId": 2, "roundPickNumber": 6, "teamId": 3, "playerId": -1, "lineupSlotId": -1 },
+      { "overallPickNumber": 15, "roundId": 2, "roundPickNumber": 7, "teamId": 9, "playerId": -1, "lineupSlotId": -1 },
+      { "overallPickNumber": 16, "roundId": 2, "roundPickNumber": 8, "teamId": 4, "playerId": -1, "lineupSlotId": -1 }
+    ]
+  },
+  "settings": {
+    "draftSettings": {
+      "orderType": "MANUAL",
+      "pickOrder": [4, 9, 3, 5, 7, 1, 8, 2],
+      "type": "SNAKE"
+    }
+  },
+  "teams": [
+    { "id": 1, "abbrev": "AAS", "location": null, "nickname": null, "name": "Adam's All Stars" },
+    { "id": 2, "abbrev": "DPF", "location": null, "nickname": null, "name": "Double Pump Fake" },
+    { "id": 3, "abbrev": "DAN", "location": null, "nickname": null, "name": "Dan " },
+    { "id": 4, "abbrev": "PB", "location": null, "nickname": null, "name": "Pickle Balboa" },
+    { "id": 5, "abbrev": "CHI", "location": null, "nickname": null, "name": "Team Chino" },
+    { "id": 7, "abbrev": "TNRA", "location": null, "nickname": null, "name": "Team Not Rich Asian" },
+    { "id": 8, "abbrev": "SCM", "location": null, "nickname": null, "name": "Succulent Chinese Meal" },
+    { "id": 9, "abbrev": "TIP", "location": null, "nickname": null, "name": "Trust in Pizza" }
+  ]
+}
