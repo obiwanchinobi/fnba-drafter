@@ -79,6 +79,7 @@ test('names the confidence columns and no longer labels a single margin a win', 
     'Mean margin',
     'Worst margin',
     'Base margin',
+    'Base rank',
     'Last run',
   ]) {
     expect(screen.getByRole('columnheader', { name })).toBeInTheDocument()
@@ -120,6 +121,7 @@ test('shows signed mean, worst and base margins', () => {
     '+2.25',
     '-3.5',
     '+4.5',
+    '1st',
     new Date(RUN_AT).toLocaleString(),
   ])
 
@@ -129,6 +131,28 @@ test('shows signed mean, worst and base margins', () => {
   expect(second.getByText('-2')).toBeInTheDocument()
 })
 
+test('shows the base scenario rank as an ordinal, matching the standings table', () => {
+  renderResults([
+    run(1, { rank: 1 }),
+    run(2, { rank: 2 }),
+    run(3, { rank: 3 }),
+    run(4, { rank: 7 }),
+  ])
+
+  expect(
+    within(screen.getByTestId('weight-search-slot-1')).getByText('1st'),
+  ).toBeInTheDocument()
+  expect(
+    within(screen.getByTestId('weight-search-slot-2')).getByText('2nd'),
+  ).toBeInTheDocument()
+  expect(
+    within(screen.getByTestId('weight-search-slot-3')).getByText('3rd'),
+  ).toBeInTheDocument()
+  expect(
+    within(screen.getByTestId('weight-search-slot-4')).getByText('7th'),
+  ).toBeInTheDocument()
+})
+
 test('explains wins and the base margin', () => {
   renderResults([run(1)])
 
@@ -136,6 +160,7 @@ test('explains wins and the base margin', () => {
     screen.getByText(/Wins counts the scenarios where Team Chino finishes first/),
   ).toBeInTheDocument()
   expect(screen.getByText(/Base margin is scenario 0/)).toBeInTheDocument()
+  expect(screen.getByText(/Base rank is where Team Chino finishes/)).toBeInTheDocument()
 })
 
 test('clicking a slot row selects that slot', () => {
