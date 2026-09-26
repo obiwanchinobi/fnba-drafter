@@ -13,6 +13,8 @@ import type { ReactElement } from 'react'
 import { MemoryRouter, useLocation } from 'react-router'
 import type { DraftPick, DraftState } from '../api/draft.ts'
 import type { Projection } from '../api/projections.ts'
+import type { WeightSet } from '../api/weightSets.ts'
+import { DEFAULT_WEIGHTS } from '../lib/catWeights.ts'
 import theme from '../theme.ts'
 import DraftPage from './DraftPage.tsx'
 
@@ -105,6 +107,41 @@ const ROWS: Projection[] = [
   }),
 ]
 
+// Foul Light leads Total Z on fouls; zeroing PF lifts Foul Heavy on blocks.
+const FOUL_ROWS: Projection[] = [
+  projectionRow({
+    id: 1,
+    full_name: 'Foul Light',
+    positions: ['C'],
+    nba_team: 'DEN',
+    pf: 80,
+    blk: 40,
+  }),
+  projectionRow({
+    id: 2,
+    full_name: 'Foul Average',
+    positions: ['SF'],
+    nba_team: 'BOS',
+    pf: 160,
+    blk: 30,
+  }),
+  projectionRow({
+    id: 3,
+    full_name: 'Foul Heavy',
+    positions: ['PG'],
+    nba_team: 'OKC',
+    pf: 240,
+    blk: 80,
+  }),
+]
+
+const BENCH_FOULS: WeightSet = {
+  id: 9,
+  name: 'Bench fouls',
+  weights: { ...DEFAULT_WEIGHTS, pf: 0 },
+  updated_at: '2026-09-22T12:00:00.000Z',
+}
+
 const JOKIC_PICK: DraftPick = {
   overall_pick: 1,
   round: 1,
@@ -181,6 +218,8 @@ function jsonBody(body: unknown, ok = true, status = ok ? 200 : 500) {
 function stubDraft(options: {
   draft: DraftState
   refresh?: () => ReturnType<typeof jsonBody>
+  rows?: Projection[]
+  weightSets?: WeightSet[]
 }) {
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input)
@@ -189,11 +228,21 @@ function stubDraft(options: {
       return options.refresh ? options.refresh() : jsonBody(options.draft)
     }
     if (url === '/api/draft') return jsonBody(options.draft)
-    if (url.includes('/api/weight_sets')) return jsonBody([])
-    return jsonBody(ROWS)
+    if (url.includes('/api/weight_sets')) {
+      return jsonBody(options.weightSets ?? [])
+    }
+    return jsonBody(options.rows ?? ROWS)
   })
   vi.stubGlobal('fetch', fetchMock)
   return fetchMock
+}
+
+function playerNames() {
+  const table = screen.getByRole('table')
+  return within(table)
+    .getAllByRole('row')
+    .slice(1)
+    .map((row) => within(row).getAllByRole('cell')[0]?.textContent)
 }
 
 function rowFor(playerName: string): HTMLTableRowElement {
@@ -317,6 +366,94 @@ test('opens on the z view sorted by Total Z', async () => {
   )
   expect(
     screen.getByRole('columnheader', { name: /Total Z/ }),
+  ).toBeInTheDocument()
+})
+
+test('shows the Weights select on first render with the saved collections', async () => {
+  stubDraft({ draft: draftState(), weightSets: [BENCH_FOULS] })
+
+  renderPage(<DraftPage />)
+
+  expect(await screen.findByText('Nikola Jokic')).toBeInTheDocument()
+  const weights = screen.getByRole('combobox', { name: /weights/i })
+  expect(weights).toHaveTextContent('Default')
+  expect(screen.getByRole('button', { name: 'New weights' })).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Edit weights' })).toBeDisabled()
+
+  fireEvent.mouseDown(weights)
+
+  expect(
+    within(screen.getByRole('listbox'))
+      .getAllByRole('option')
+      .map((option) => option.textContent),
+  ).toEqual(['Default', 'Bench fouls'])
+})
+
+test('choosing a collection sorts by Weighted Z and the choice survives Refresh picks', async () => {
+  const refreshed = draftState({
+    refreshed_at: '2026-09-26T11:07:00Z',
+    picks: [
+      {
+        ...JOKIC_PICK,
+        player_id: 1,
+        full_name: 'Foul Light',
+        positions: ['C'],
+        nba_team: 'DEN',
+      },
+    ],
+  })
+  stubDraft({
+    draft: draftState({ picks: [] }),
+    refresh: () => jsonBody(refreshed),
+    rows: FOUL_ROWS,
+    weightSets: [BENCH_FOULS],
+  })
+
+  renderPage(<DraftPage />)
+
+  expect(await screen.findByText('Foul Heavy')).toBeInTheDocument()
+  expect(playerNames()).toEqual(['Foul Light', 'Foul Heavy', 'Foul Average'])
+  expect(screen.getByRole('columnheader', { name: 'Total Z' })).toHaveAttribute(
+    'aria-sort',
+    'descending',
+  )
+
+  fireEvent.mouseDown(screen.getByRole('combobox', { name: /weights/i }))
+  fireEvent.click(await screen.findByRole('option', { name: 'Bench fouls' }))
+
+  expect(playerNames()).toEqual(['Foul Heavy', 'Foul Light', 'Foul Average'])
+  expect(
+    screen.getByRole('columnheader', { name: 'Weighted Z' }),
+  ).toHaveAttribute('aria-sort', 'descending')
+  expect(
+    screen.getByRole('columnheader', { name: 'Total Z' }),
+  ).not.toHaveAttribute('aria-sort')
+  expect(screen.getByRole('combobox', { name: /weights/i })).toHaveTextContent(
+    'Bench fouls',
+  )
+  expect(screen.getByTestId('location')).toHaveTextContent(
+    '/draft?view=z&weights=9&sort=z_weighted',
+  )
+
+  fireEvent.click(screen.getByRole('button', { name: 'Refresh picks' }))
+
+  await waitFor(() => {
+    expect(cellByHeader('Foul Light', 'Drafted')).toHaveTextContent(
+      '#1 Trust in Pizza',
+    )
+  })
+  expect(screen.getByRole('combobox', { name: /weights/i })).toHaveTextContent(
+    'Bench fouls',
+  )
+  expect(playerNames()).toEqual(['Foul Heavy', 'Foul Light', 'Foul Average'])
+  expect(
+    screen.getByRole('columnheader', { name: 'Weighted Z' }),
+  ).toHaveAttribute('aria-sort', 'descending')
+  expect(screen.getByTestId('location')).toHaveTextContent(
+    '/draft?view=z&weights=9&sort=z_weighted',
+  )
+  expect(
+    screen.getByText(/Weighted Z applies "Bench fouls"/),
   ).toBeInTheDocument()
 })
 
