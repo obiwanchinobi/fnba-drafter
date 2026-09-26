@@ -171,13 +171,32 @@ function nextSort(
   return { column, direction: defaultSortDirection(column) }
 }
 
+const TOTAL_SORT: NonNullable<ProjectionsUrlState['sort']> = {
+  column: 'z_total',
+  direction: 'desc',
+}
+
+const WEIGHTED_SORT: NonNullable<ProjectionsUrlState['sort']> = {
+  column: 'z_weighted',
+  direction: 'desc',
+}
+
+// Sort columns that only render in the z view (ProjectionsTable `zOnly`).
+function isZOnlySort(current: ProjectionsUrlState['sort']): boolean {
+  return (
+    current?.column === 'z_total' ||
+    current?.column === 'z_weighted' ||
+    current?.column === 'z_rank_delta'
+  )
+}
+
 function withoutWeightedSort(
   current: ProjectionsUrlState['sort'],
 ): ProjectionsUrlState['sort'] {
   if (current?.column !== 'z_weighted' && current?.column !== 'z_rank_delta') {
     return current
   }
-  return { column: 'z_total', direction: 'desc' }
+  return TOTAL_SORT
 }
 
 export default function ProjectionsPage() {
@@ -428,6 +447,22 @@ export default function ProjectionsPage() {
     }))
   }
 
+  // The z view opens on the composite in play; leaving it drops a sort the
+  // values view cannot show, so the table falls back to the API order.
+  function handleViewChange(next: StatView) {
+    updateUrl((current) => ({
+      view: next,
+      sort:
+        next === 'z'
+          ? activeWeightSet
+            ? WEIGHTED_SORT
+            : TOTAL_SORT
+          : isZOnlySort(current.sort)
+            ? null
+            : current.sort,
+    }))
+  }
+
   function handleSort(column: SortColumn) {
     updateUrl((current) => ({ sort: nextSort(current.sort, column) }))
   }
@@ -494,7 +529,7 @@ export default function ProjectionsPage() {
           onUpdateFromSource={handleUpdateFromSource}
           updating={updating}
           view={view}
-          onViewChange={(value) => updateUrl({ view: value })}
+          onViewChange={handleViewChange}
           basis={basis}
           onBasisChange={(value) => updateUrl({ basis: value })}
           weightSets={weightSets}
