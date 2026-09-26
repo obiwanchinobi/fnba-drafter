@@ -1,20 +1,35 @@
 # Seeded random hill-climb over weight collections for one Team Chino slot.
 #
-# The other seven teams draft by unweighted Total Z (the MockDraft opponent
-# model). Plateau moves and random restarts keep the climb moving; `budget`
-# bounds the evaluations per slot.
+# Every candidate is drafted once per DraftScenarios scenario (the same fixed
+# set of opponent rooms for every candidate) and scored on its roto margin over
+# the next-best team in each. Candidates compare on
+# [win_rate, mean_margin, worst_margin]. Scenario 0 is the base room (seven
+# unweighted Total-Z opponents, the MockDraft model); the stored margin, rank,
+# points, picks and standings come from it so a result replays on the Mock
+# drafts page. Win rate is against modelled rooms, not a forecast of the league.
+#
+# Plateau moves and random restarts keep the climb moving; `budget` bounds the
+# evaluations per slot.
 class WeightHillClimb
   STEPS = [ 0.05, 0.25, 0.5, 1.0 ].freeze
   PLATEAU_RESTART = 50
+  OBJECTIVE = %i[win_rate mean_margin worst_margin].freeze
 
-  def initialize(board, by_player_id, rng)
-    @board = board
+  # scenarios: a DraftScenarios over the unweighted board.
+  def initialize(scenarios, by_player_id, rng)
+    @board = scenarios.board
     @by_player_id = by_player_id
     @rng = rng
+    # Opponent orders as board positions, so each evaluation can point them at
+    # that candidate's weighted entries (picks then carry its weighted value).
+    position = @board.each_with_index.to_h { |entry, index| [ entry[:player_id], index ] }
+    @scenario_positions = scenarios.map do |scenario|
+      scenario[:orders].transform_values { |order| order.map { |entry| position.fetch(entry[:player_id]) } }
+    end
   end
 
   # Starts from equal weights and returns the best evaluation seen.
-  # Ties on (margin, roto_points) move `current` but never replace `best`.
+  # Ties on the objective move `current` but never replace `best`.
   def best_for(user_slot, budget)
     order = MockDraft.draft_order_for(user_slot)
     current = evaluate(order, WeightSet::CATEGORIES.index_with { 1.0 })
@@ -36,15 +51,22 @@ class WeightHillClimb
 
   private
     def better?(left, right)
-      (left.values_at(:margin, :roto_points) <=> right.values_at(:margin, :roto_points)).positive?
+      (left.values_at(*OBJECTIVE) <=> right.values_at(*OBJECTIVE)).positive?
     end
 
+    # Chino's weighted order is sorted once and shared by every scenario.
     def evaluate(order, weights)
       board = weighted_board(weights)
-      orders = MockDraft.team_orders(board, MockDraft.weighted_order(board))
-      picks = SnakeDraft.new(order: order, orders: orders, rounds: League::ROUNDS).picks
-      table = RotoStandings.new(MockDraft.rosters_for(picks, @by_player_id)).table
-      score(table).merge(weights: weights, picks: picks.map { |pick| pick_row(pick) }, standings: table)
+      chino_order = MockDraft.weighted_order(board)
+      drafts = @scenario_positions.map do |positions|
+        orders = positions.transform_values { |indexes| board.values_at(*indexes) }
+        orders[League::USER_TEAM] = chino_order
+        picks = SnakeDraft.new(order: order, orders: orders, rounds: League::ROUNDS).picks
+        [ picks, RotoStandings.new(MockDraft.rosters_for(picks, @by_player_id)).table ]
+      end
+      base_picks, base_table = drafts.first
+      score(drafts.map { |_, table| margin_of(table) }, base_table)
+        .merge(weights: weights, picks: base_picks.map { |pick| pick_row(pick) }, standings: base_table)
     end
 
     # The mock_draft_picks column shape, string-keyed so it can be stored as jsonb.
@@ -68,11 +90,28 @@ class WeightHillClimb
       end
     end
 
-    def score(table)
-      chino = table.find { |row| row["team"] == League::USER_TEAM }
-      best_other = table.reject { |row| row["team"] == League::USER_TEAM }.map { |row| row["roto_points"] }.max
-      margin = chino["roto_points"] - best_other
-      { rank: chino["rank"], roto_points: chino["roto_points"], margin: margin, won: margin.positive? }
+    def margin_of(table)
+      chino_points = chino_row(table)["roto_points"]
+      chino_points - table.reject { |row| row["team"] == League::USER_TEAM }.map { |row| row["roto_points"] }.max
+    end
+
+    def chino_row(table)
+      table.find { |row| row["team"] == League::USER_TEAM }
+    end
+
+    # The objective over all scenarios, plus the base scenario's rank and points.
+    def score(margins, base_table)
+      chino = chino_row(base_table)
+      {
+        win_rate: margins.count(&:positive?).fdiv(margins.size),
+        mean_margin: margins.sum.fdiv(margins.size),
+        worst_margin: margins.min,
+        margins: margins,
+        rank: chino["rank"],
+        roto_points: chino["roto_points"],
+        margin: margins.first,
+        won: margins.first.positive?
+      }
     end
 
     def perturb(weights)

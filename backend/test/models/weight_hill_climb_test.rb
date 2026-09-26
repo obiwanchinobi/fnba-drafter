@@ -6,13 +6,36 @@ class WeightHillClimbTest < ActiveSupport::TestCase
 
   BUDGET = 25
   SEED = 20_260_926
+  # Few scenarios keep the suite fast; WeightSearch::SCENARIO_COUNT is the real set.
+  SCENARIO_COUNT = 3
   PICK_KEYS = %w[overall_pick player_id roster_slot round slot team z_total z_weighted].freeze
 
   setup do
     create_search_board
   end
 
-  test "each slot's rank, points, margin and won replay through SnakeDraft and RotoStandings" do
+  test "the best result is scored across every scenario, base scenario first" do
+    scenarios = search_scenarios(SEED, SCENARIO_COUNT)
+
+    bests_by_slot.each do |user_slot, best|
+      margins = replay_margins(user_slot, best[:weights], scenarios)
+
+      assert_equal SCENARIO_COUNT, best[:margins].size
+      margins.zip(best[:margins]).each { |expected, actual| assert_in_delta expected, actual, 1e-9 }
+      assert_in_delta margins.count(&:positive?).fdiv(SCENARIO_COUNT), best[:win_rate], 1e-12
+      assert_in_delta margins.sum.fdiv(SCENARIO_COUNT), best[:mean_margin], 1e-9
+      assert_in_delta margins.min, best[:worst_margin], 1e-9
+      assert_in_delta best[:margins].first, best[:margin], 1e-9
+    end
+  end
+
+  test "the same seeds give the same best result across plateau restarts" do
+    budget = WeightHillClimb::PLATEAU_RESTART + 15
+
+    assert_equal climb.best_for(5, budget), climb.best_for(5, budget)
+  end
+
+  test "each slot's rank, points, margin and won replay the base scenario through SnakeDraft and RotoStandings" do
     bests_by_slot.each do |user_slot, best|
       replayed = replay(user_slot, best[:weights])
       chino = chino_row(replayed)
@@ -27,14 +50,14 @@ class WeightHillClimbTest < ActiveSupport::TestCase
     end
   end
 
-  test "the best weights never do worse than equal weights for that slot" do
+  test "the best weights never do worse than equal weights on win rate, mean margin, worst margin" do
     equal = WeightSet::CATEGORIES.index_with { 1.0 }
+    scenarios = search_scenarios(SEED, SCENARIO_COUNT)
 
     improved = 0
     bests_by_slot.each do |user_slot, best|
-      baseline = replay(user_slot, equal)
-      chino_points = chino_row(baseline)["roto_points"]
-      comparison = best.values_at(:margin, :roto_points) <=> [ chino_points - best_other_points(baseline), chino_points ]
+      comparison = best.values_at(:win_rate, :mean_margin, :worst_margin) <=>
+        objective(replay_margins(user_slot, equal, scenarios))
 
       assert_operator comparison, :>=, 0, "slot #{user_slot}"
       improved += 1 if comparison.positive?
@@ -90,7 +113,7 @@ class WeightHillClimbTest < ActiveSupport::TestCase
   private
     def climb
       projections = espn_projections
-      WeightHillClimb.new(MockDraft.draftable_board(projections), projections.index_by(&:player_id), Random.new(SEED))
+      WeightHillClimb.new(search_scenarios(SEED, SCENARIO_COUNT), projections.index_by(&:player_id), Random.new(SEED))
     end
 
     def bests_by_slot

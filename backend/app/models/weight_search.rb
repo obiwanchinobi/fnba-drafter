@@ -1,11 +1,15 @@
 # A saved search, per Team Chino draft slot, for the weight collection that
-# gives Chino the best projected roto margin over the next-best team. Each slot's
-# best result is saved as a WeightSearchRun and as a "Draft slot N" weight set.
+# wins the most of a seeded set of modelled draft rooms (DraftScenarios), then
+# has the best mean and worst roto margin over the next-best team. Each slot's
+# best result is saved as a WeightSearchRun and as a "Draft slot N" weight set;
+# the stored margin, rank, points, picks and standings are the base scenario's.
 #
-# A found collection is fitted to the MockDraft opponent model and to the
-# projection snapshot recorded here. WeightHillClimb runs the search per slot.
+# A found collection is fitted to those opponent models and to the projection
+# snapshot recorded here. WeightHillClimb runs the search per slot.
 class WeightSearch < ApplicationRecord
-  DEFAULT_BUDGET = 500
+  # Scenarios per candidate, including the base scenario.
+  SCENARIO_COUNT = 24
+  DEFAULT_BUDGET = 300
   MAX_BUDGET = 2_000
   NAME_PREFIX = "Draft slot".freeze
   # Seeds are stored in a bigint column.
@@ -13,7 +17,8 @@ class WeightSearch < ApplicationRecord
 
   has_many :runs, class_name: "WeightSearchRun", dependent: :delete_all, inverse_of: :weight_search
 
-  def self.run!(budget: DEFAULT_BUDGET, seed: nil, source: "espn", season: Espn::SEASON)
+  def self.run!(budget: DEFAULT_BUDGET, seed: nil, source: "espn", season: Espn::SEASON,
+    scenario_count: SCENARIO_COUNT)
     seed ||= SecureRandom.random_number(SEED_RANGE.end)
     projections = PlayerProjection.includes(:player).where(source: source, season: season).to_a
     board = MockDraft.draftable_board(projections)
@@ -21,7 +26,9 @@ class WeightSearch < ApplicationRecord
       raise MockDraft::BoardTooSmall, "draftable board has #{board.size} players"
     end
 
-    climb = WeightHillClimb.new(board, projections.index_by(&:player_id), Random.new(seed))
+    espn_ranks = projections.to_h { |projection| [ projection.player_id, projection.espn_roto_rank ] }
+    scenarios = DraftScenarios.new(board: board, espn_ranks: espn_ranks, seed: seed, count: scenario_count)
+    climb = WeightHillClimb.new(scenarios, projections.index_by(&:player_id), Random.new(seed))
     bests = 1.upto(League::TEAM_COUNT).map { |user_slot| [ user_slot, climb.best_for(user_slot, budget) ] }
 
     # Only one search is kept. Replacing it after the climb, in one transaction,

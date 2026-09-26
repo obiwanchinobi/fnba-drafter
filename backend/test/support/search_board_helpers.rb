@@ -57,6 +57,34 @@ module SearchBoardHelpers
       RotoStandings.new(MockDraft.rosters_for(picks, espn_projections.index_by(&:player_id))).table
     end
 
+    def espn_ranks
+      espn_projections.to_h { |projection| [ projection.player_id, projection.espn_roto_rank ] }
+    end
+
+    def search_scenarios(seed, count)
+      DraftScenarios.new(
+        board: MockDraft.draftable_board(espn_projections), espn_ranks: espn_ranks, seed: seed, count: count
+      )
+    end
+
+    # Chino's roto margin in each scenario: opponents draft the scenario's
+    # orders, Chino drafts the board by `weights`, standings use the projections.
+    def replay_margins(user_slot, weights, scenarios)
+      chino_order = MockDraft.weighted_order(MockDraft.draftable_board(espn_projections, weights))
+      by_player_id = espn_projections.index_by(&:player_id)
+      scenarios.map do |scenario|
+        orders = scenario[:orders].merge(League::USER_TEAM => chino_order)
+        picks = SnakeDraft.new(order: MockDraft.draft_order_for(user_slot), orders: orders, rounds: League::ROUNDS).picks
+        table = RotoStandings.new(MockDraft.rosters_for(picks, by_player_id)).table
+        chino_row(table)["roto_points"] - best_other_points(table)
+      end
+    end
+
+    # The search objective for a list of margins.
+    def objective(margins)
+      [ margins.count(&:positive?).fdiv(margins.size), margins.sum.fdiv(margins.size), margins.min ]
+    end
+
     def varied_line(stats)
       line = BASE_LINE.to_h do |key, value|
         next [ key, value ] if key == :gp

@@ -23,7 +23,7 @@ class DraftScenarios
   RESIDUAL_POOL = League::TEAM_COUNT * League::ROUNDS
   OPPONENTS = (League::TEAMS - [ League::USER_TEAM ]).freeze
 
-  attr_reader :noise_sd
+  attr_reader :board, :noise_sd
 
   # board: best-first entries with :player_id and :value (Total Z).
   # espn_ranks: player_id => ESPN roto rank.
