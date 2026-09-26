@@ -20,31 +20,9 @@ import {
 import MockDraftBoard from '../components/MockDraftBoard.tsx'
 import MockDraftStandings from '../components/MockDraftStandings.tsx'
 import WeightSearchResults from '../components/WeightSearchResults.tsx'
-import { SCORED_CAT_IDS, type ScoredCat } from '../lib/statBasis.ts'
+import { SCORED_CAT_IDS, SCORED_CAT_LABELS } from '../lib/statBasis.ts'
 
 const USER_TEAM = 'Team Chino'
-
-const WEIGHT_LABELS: Record<ScoredCat, string> = {
-  fgm: 'FGM',
-  fg_pct: 'FG%',
-  ftm: 'FTM',
-  ft_pct: 'FT%',
-  tpm: '3PM',
-  tp_pct: '3P%',
-  oreb: 'OREB',
-  dreb: 'DREB',
-  ast: 'AST',
-  ato: 'A/TO',
-  stl: 'STL',
-  str: 'STR',
-  blk: 'BLK',
-  to: 'TO',
-  pf: 'PF',
-  dd: 'DD',
-  td: 'TD',
-  pts: 'PTS',
-  ppm: 'PPM',
-}
 
 function formatWhen(value: string): string {
   const date = new Date(value)
@@ -69,7 +47,7 @@ function RunWeights({ run }: { run: WeightSearchRun }) {
           <TableRow>
             {SCORED_CAT_IDS.map((cat) => (
               <TableCell key={cat} align="right">
-                {WEIGHT_LABELS[cat]}
+                {SCORED_CAT_LABELS[cat]}
               </TableCell>
             ))}
           </TableRow>

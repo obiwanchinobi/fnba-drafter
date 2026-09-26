@@ -6,30 +6,13 @@ import TableContainer from '@mui/material/TableContainer'
 import TableHead from '@mui/material/TableHead'
 import TableRow from '@mui/material/TableRow'
 import Typography from '@mui/material/Typography'
-import { SCORED_CAT_IDS, SCORED_CATS, type ScoredCat } from '../lib/statBasis.ts'
+import {
+  SCORED_CAT_IDS,
+  SCORED_CAT_LABELS,
+  SCORED_CATS,
+  type ScoredCat,
+} from '../lib/statBasis.ts'
 import type { TeamStanding } from '../lib/draftBoard.ts'
-
-const CAT_LABELS: Record<ScoredCat, string> = {
-  fgm: 'FGM',
-  fg_pct: 'FG%',
-  ftm: 'FTM',
-  ft_pct: 'FT%',
-  tpm: '3PM',
-  tp_pct: '3P%',
-  oreb: 'OREB',
-  dreb: 'DREB',
-  ast: 'AST',
-  ato: 'A/TO',
-  stl: 'STL',
-  str: 'STR',
-  blk: 'BLK',
-  to: 'TO',
-  pf: 'PF',
-  dd: 'DD',
-  td: 'TD',
-  pts: 'PTS',
-  ppm: 'PPM',
-}
 
 type Props = {
   standings: TeamStanding[]
@@ -38,7 +21,7 @@ type Props = {
 
 function catHeader(cat: ScoredCat): string {
   const def = SCORED_CATS[cat]
-  const label = CAT_LABELS[cat]
+  const label = SCORED_CAT_LABELS[cat]
   if (def.kind === 'counting' && def.inverse) {
     return `${label} (lower is better)`
   }

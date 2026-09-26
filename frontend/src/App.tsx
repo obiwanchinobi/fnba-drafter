@@ -4,9 +4,10 @@ import Tabs from '@mui/material/Tabs'
 import { Link, Navigate, Route, Routes, useLocation } from 'react-router'
 import MockDraftsPage from './pages/MockDraftsPage.tsx'
 import ProjectionsPage from './pages/ProjectionsPage.tsx'
+import WeightsPage from './pages/WeightsPage.tsx'
 import WinningWeightsPage from './pages/WinningWeightsPage.tsx'
 
-type Section = 'projections' | 'mock_drafts' | 'winning_weights'
+type Section = 'projections' | 'mock_drafts' | 'winning_weights' | 'weights'
 
 function App() {
   const { pathname } = useLocation()
@@ -14,7 +15,9 @@ function App() {
     ? 'mock_drafts'
     : pathname.startsWith('/winning-weights')
       ? 'winning_weights'
-      : 'projections'
+      : pathname.startsWith('/weights')
+        ? 'weights'
+        : 'projections'
 
   return (
     <>
@@ -38,6 +41,7 @@ function App() {
             component={Link}
             to="/winning-weights"
           />
+          <Tab value="weights" label="Weights" component={Link} to="/weights" />
         </Tabs>
       </Box>
       <Routes>
@@ -46,6 +50,7 @@ function App() {
         <Route path="/mock-drafts" element={<MockDraftsPage />} />
         <Route path="/mock-drafts/:id" element={<MockDraftsPage />} />
         <Route path="/winning-weights" element={<WinningWeightsPage />} />
+        <Route path="/weights" element={<WeightsPage />} />
         <Route path="*" element={<Navigate to="/projections" replace />} />
       </Routes>
     </>
