@@ -348,7 +348,7 @@ test('an error from one slot stops run all and shows the alert', async () => {
   fireEvent.click(screen.getByRole('button', { name: 'Run all slots' }))
 
   expect(await screen.findByRole('alert')).toHaveTextContent(
-    'Not enough draftable players to fill 8 teams × 16 rounds',
+    'Not enough draftable players to fill 8 teams × 17 rounds',
   )
   await waitFor(() => {
     expect(screen.getByRole('button', { name: 'Run all slots' })).toBeEnabled()

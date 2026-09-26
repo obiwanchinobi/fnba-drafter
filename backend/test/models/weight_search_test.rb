@@ -82,11 +82,11 @@ class WeightSearchTest < ActiveSupport::TestCase
     refute_equal WeightSet.find_by!(name: "Draft slot #{SLOT}").weights, run.weights
   end
 
-  test "the saved run carries its draft order, 128 picks and the base-scenario standings behind its score" do
+  test "the saved run carries its draft order, 136 picks and the base-scenario standings behind its score" do
     run = WeightSearchRun.find(search(SLOT).id)
 
     assert_equal MockDraft.draft_order_for(SLOT), run.draft_order
-    assert_equal 128, run.picks.size
+    assert_equal 136, run.picks.size
     assert_equal replay_picks(SLOT, run.weights).map { |pick| pick[:player_id] },
       run.picks.map { |pick| pick["player_id"] }
     assert_equal replay(SLOT, run.weights), run.standings
@@ -156,14 +156,14 @@ class WeightSearchTest < ActiveSupport::TestCase
 
   test "a run that raises BoardTooSmall leaves the prior run untouched" do
     prior = snapshot(search(SLOT))
-    PlayerProjection.where(source: "espn").order(:id).limit(PLAYER_COUNT - 127).destroy_all
+    PlayerProjection.where(source: "espn").order(:id).limit(PLAYER_COUNT - 135).destroy_all
 
     assert_raises(MockDraft::BoardTooSmall) { search(SLOT, seed: SEED + 1) }
     assert_equal prior, snapshot(WeightSearchRun.sole)
   end
 
-  test "run! raises BoardTooSmall and saves nothing when fewer than 128 players are draftable" do
-    PlayerProjection.where(source: "espn").order(:id).limit(PLAYER_COUNT - 127).destroy_all
+  test "run! raises BoardTooSmall and saves nothing when fewer than 136 players are draftable" do
+    PlayerProjection.where(source: "espn").order(:id).limit(PLAYER_COUNT - 135).destroy_all
 
     assert_raises(MockDraft::BoardTooSmall) { search(SLOT) }
     assert_equal 0, WeightSet.count

@@ -108,7 +108,7 @@ test('standings render in the given order with tied ranks and category points', 
     screen.getByRole('columnheader', { name: 'PF (lower is better)' }),
   ).toBeInTheDocument()
   expect(
-    screen.getByText(/projected rotisserie points for all 16 rostered players/i),
+    screen.getByText(/projected rotisserie points for all 17 rostered players/i),
   ).toBeInTheDocument()
   expect(screen.getByText(/no injury or lineup model/i)).toBeInTheDocument()
   expect(screen.queryByText(/simulated season/i)).not.toBeInTheDocument()

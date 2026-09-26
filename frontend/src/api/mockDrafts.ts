@@ -35,7 +35,7 @@ export type MockDraft = Omit<MockDraftSummary, 'runs'> & {
 
 const ERROR_MESSAGES: Record<string, string> = {
   board_too_small:
-    'Not enough draftable players to fill 8 teams × 16 rounds',
+    'Not enough draftable players to fill 8 teams × 17 rounds',
   unknown_policy: 'Unknown pick policy',
   unknown_weight_set: 'That weight collection no longer exists.',
 }

@@ -153,13 +153,13 @@ class WeightHillClimbTest < ActiveSupport::TestCase
     assert_equal League::USER_TEAM, best[:draft_order][2]
   end
 
-  test "the best result keeps all 128 picks in mock draft pick column shape" do
+  test "the best result keeps all 136 picks in mock draft pick column shape" do
     best = climb.best_for(3, BUDGET)
     replayed = replay_picks(3, best[:weights])
 
     assert_equal League::TEAM_COUNT * League::ROUNDS, best[:picks].size
     best[:picks].each { |pick| assert_equal PICK_KEYS, pick.keys.sort }
-    assert_equal (1..128).to_a, best[:picks].map { |pick| pick["overall_pick"] }
+    assert_equal (1..136).to_a, best[:picks].map { |pick| pick["overall_pick"] }
     assert_equal replayed.map { |pick| pick[:player_id] }, best[:picks].map { |pick| pick["player_id"] }
     assert_equal replayed.map { |pick| pick[:roster_slot] }, best[:picks].map { |pick| pick["roster_slot"] }
     replayed.zip(best[:picks]).each do |expected, pick|

@@ -65,17 +65,17 @@ class SnakeDraftTest < ActiveSupport::TestCase
     assert_equal [ "PG" ], both_picks.map { |pick| pick[:roster_slot] }
   end
 
-  test "drafts eight teams across sixteen rounds and stops" do
+  test "drafts eight teams across seventeen rounds and stops" do
     order = League::TEAMS
-    board = 130.times.map do |index|
+    board = (League::TEAM_COUNT * League::ROUNDS + 2).times.map do |index|
       { player_id: index + 1, positions: ALL_POSITIONS, value: 1_000 - index }
     end
 
     picks = draft(order, board, League::ROUNDS)
 
-    assert_equal 128, picks.size
-    assert_equal (1..128).to_a, picks.map { |pick| pick[:overall_pick] }
-    assert_equal [ 129, 130 ], board.map { |player| player[:player_id] } - picks.map { |pick| pick[:player_id] }
+    assert_equal 136, picks.size
+    assert_equal (1..136).to_a, picks.map { |pick| pick[:overall_pick] }
+    assert_equal [ 137, 138 ], board.map { |player| player[:player_id] } - picks.map { |pick| pick[:player_id] }
     assert_equal order.first, picks[0][:team]
     assert_equal 1, picks[0][:slot]
     assert_equal 1, picks[0][:round]
@@ -88,8 +88,8 @@ class SnakeDraftTest < ActiveSupport::TestCase
     assert_equal 2, picks[8][:round]
     assert_equal order.first, picks[15][:team]
     assert_equal 1, picks[15][:slot]
-    assert_equal 16, picks[127][:round]
-    assert_equal 128, picks[127][:overall_pick]
+    assert_equal 17, picks[135][:round]
+    assert_equal 136, picks[135][:overall_pick]
   end
 
   test "late round with only a center slot open skips a better guard" do

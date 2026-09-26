@@ -580,7 +580,7 @@ export default function ProjectionsPage() {
             />
             {view === 'z' ? (
               <Typography variant="caption">
-                {`Z-scores vs the top ${zScores.poolSize} rostered players (8 teams × 16 roster spots, ≥ 20 GP). TO and PF are reversed so positive is better.${
+                {`Z-scores vs the top ${zScores.poolSize} rostered players (8 teams × 17 roster spots, ≥ 20 GP). TO and PF are reversed so positive is better.${
                   weighted
                     ? ` Weighted Z applies "${weighted.name}"; Total Z uses equal weights; Δ Rank is places gained under the collection.`
                     : ''

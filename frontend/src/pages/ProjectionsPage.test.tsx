@@ -1084,7 +1084,7 @@ test('a row with pts null shows an em dash for Total Z', async () => {
   expect(cells[totalIndex]).toHaveTextContent('—')
   expect(
     screen.getByText(
-      'Z-scores vs the top 1 rostered players (8 teams × 16 roster spots, ≥ 20 GP). TO and PF are reversed so positive is better.',
+      'Z-scores vs the top 1 rostered players (8 teams × 17 roster spots, ≥ 20 GP). TO and PF are reversed so positive is better.',
     ),
   ).toBeInTheDocument()
 })
@@ -1678,7 +1678,7 @@ test('toggling Heatmap colours a cell and writes heat=1', async () => {
   fireEvent.click(screen.getByRole('button', { name: 'Z-scores' }))
 
   const baseCaption =
-    'Z-scores vs the top 2 rostered players (8 teams × 16 roster spots, ≥ 20 GP). TO and PF are reversed so positive is better.'
+    'Z-scores vs the top 2 rostered players (8 teams × 17 roster spots, ≥ 20 GP). TO and PF are reversed so positive is better.'
   expect(screen.getByText(baseCaption)).toBeInTheDocument()
   const ptsBefore = cellByHeader('High Scorer', 'PTS')
   expect(cellBackground(ptsBefore)).toBe('')

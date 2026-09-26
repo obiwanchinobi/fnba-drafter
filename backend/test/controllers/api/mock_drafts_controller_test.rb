@@ -9,7 +9,7 @@ module Api
     }.freeze
 
     test "POST /api/mock_drafts returns the show payload" do
-      128.times { |index| create_draftable(espn_roto_rank: index + 1, pts: 1_080 + index) }
+      (League::TEAM_COUNT * League::ROUNDS).times { |index| create_draftable(espn_roto_rank: index + 1, pts: 1_080 + index) }
 
       post "/api/mock_drafts", params: { policy: "fnba_total_z" }, as: :json
 
@@ -38,7 +38,7 @@ module Api
     end
 
     test "POST /api/mock_drafts snapshots a weight set and returns weighted pick values" do
-      128.times { |index| create_draftable(espn_roto_rank: index + 1, pts: 1_080 + index) }
+      (League::TEAM_COUNT * League::ROUNDS).times { |index| create_draftable(espn_roto_rank: index + 1, pts: 1_080 + index) }
       weights = WeightSet::CATEGORIES.index_with { |cat| cat == "blk" ? 2.0 : 0.0 }
       collection = WeightSet.create!(name: "Blocks only", weights: weights)
 
@@ -63,7 +63,7 @@ module Api
     end
 
     test "POST /api/mock_drafts returns unknown_weight_set and creates nothing" do
-      128.times { |index| create_draftable(espn_roto_rank: index + 1) }
+      (League::TEAM_COUNT * League::ROUNDS).times { |index| create_draftable(espn_roto_rank: index + 1) }
 
       assert_no_difference("MockDraft.count") do
         post "/api/mock_drafts",
@@ -108,8 +108,8 @@ module Api
       end
     end
 
-    test "GET /api/mock_drafts/:id includes eight runs and 128 picks without a per-pick query" do
-      128.times { |index| create_draftable(espn_roto_rank: index + 1) }
+    test "GET /api/mock_drafts/:id includes eight runs and 136 picks without a per-pick query" do
+      (League::TEAM_COUNT * League::ROUNDS).times { |index| create_draftable(espn_roto_rank: index + 1) }
       draft = MockDraft.simulate!(policy: "fnba_total_z")
 
       ActiveRecord::Base.uncached do
@@ -132,16 +132,16 @@ module Api
     end
 
     test "DELETE /api/mock_drafts/:id removes the draft, its runs, and its picks" do
-      128.times { |index| create_draftable(espn_roto_rank: index + 1) }
+      (League::TEAM_COUNT * League::ROUNDS).times { |index| create_draftable(espn_roto_rank: index + 1) }
       draft = MockDraft.simulate!(policy: "fnba_total_z")
       run_ids = draft.runs.pluck(:id)
       assert_equal 8, run_ids.size
-      assert_equal 8 * 128, MockDraftPick.where(mock_draft_run_id: run_ids).count
+      assert_equal 8 * 136, MockDraftPick.where(mock_draft_run_id: run_ids).count
 
       assert_difference(
         -> { MockDraft.count } => -1,
         -> { MockDraftRun.count } => -8,
-        -> { MockDraftPick.count } => -(8 * 128)
+        -> { MockDraftPick.count } => -(8 * 136)
       ) do
         assert_queries_match(/DELETE FROM ["']mock_draft_picks["']/, count: 8) do
           delete "/api/mock_drafts/#{draft.id}"
@@ -184,7 +184,7 @@ module Api
           assert_equal 8, run.fetch("draft_order").size
           assert_equal League::USER_TEAM, run.fetch("draft_order")[index]
           assert_equal 8, run.fetch("standings").size
-          assert_equal 128, run.fetch("picks").size
+          assert_equal 136, run.fetch("picks").size
           pick = run.fetch("picks").first
           assert_equal %w[
             player_id full_name positions nba_team injury_status round slot

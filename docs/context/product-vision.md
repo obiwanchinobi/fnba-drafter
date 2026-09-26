@@ -50,8 +50,8 @@ Facts from ESPN `mSettings` (logged-in Chrome session, read-only, fetched 2026-0
 
 - 8 teams, scoring type ROTO, one matchup period (full season)
 - 19 scoring items; reverse items are PF and TO
-- Roster: PG 1, SG 1, SF 1, PF 1, C 1, G 1, F/C 1, UTIL 4 (10 starters), Bench 6, IR 1
-- Rostered pool = 8 × 16 = 128 (IR excluded)
+- Roster: PG 1, SG 1, SF 1, PF 1, C 1, G 1, F/C 1, UTIL 4 (11 starters), Bench 6, IR 1
+- Rostered pool = 8 × 17 = 136 (IR excluded)
 - Draft: snake, 90 s per pick, `date` = 1790424000000 ms = Sat 26 Sep 2026 22:00 AEST
 
 ## Lessons from prior drafts

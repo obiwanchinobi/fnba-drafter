@@ -40,7 +40,7 @@ function draft(id: number): MockDraft {
     source: 'espn',
     season: 2027,
     projection_imported_at: '2026-09-22T03:00:00.000Z',
-    pool_size: 128,
+    pool_size: 136,
     user_team: 'Team Chino',
     weight_set_name: null,
     weights: null,
@@ -118,7 +118,7 @@ test('run button posts and shows the new draft', async () => {
     }),
   )
 
-  expect(await screen.findByText(/Pool of 128/)).toBeInTheDocument()
+  expect(await screen.findByText(/Pool of 136/)).toBeInTheDocument()
   expect(screen.getByText(/same player in all 8 permutations/)).toBeInTheDocument()
   const post = fetchMock.mock.calls.find(
     ([input, init]) =>
@@ -171,7 +171,7 @@ test('shows an error when the run fails', async () => {
 
   expect(
     await screen.findByText(
-      'Not enough draftable players to fill 8 teams × 16 rounds',
+      'Not enough draftable players to fill 8 teams × 17 rounds',
     ),
   ).toBeInTheDocument()
 })
@@ -189,7 +189,7 @@ test('opening /mock-drafts/7 fetches that draft on mount', async () => {
 
   renderPage('/mock-drafts/7')
 
-  expect(await screen.findByText(/Pool of 128/)).toBeInTheDocument()
+  expect(await screen.findByText(/Pool of 136/)).toBeInTheDocument()
   expect(fetchMock).toHaveBeenCalledWith('/api/mock_drafts/7')
 })
 
@@ -240,7 +240,7 @@ test('a successful run navigates to the created id', async () => {
   await waitFor(() => {
     expect(screen.getByTestId('location')).toHaveTextContent(/^\/mock-drafts\/9$/)
   })
-  expect(await screen.findByText(/Pool of 128/)).toBeInTheDocument()
+  expect(await screen.findByText(/Pool of 136/)).toBeInTheDocument()
 })
 
 test('an unknown id shows the load error and still lists drafts', async () => {
@@ -529,11 +529,11 @@ test('deleting the open draft navigates to /mock-drafts and hides the detail', a
   vi.stubGlobal('fetch', fetchMock)
 
   renderPage('/mock-drafts/4')
-  expect(await screen.findByText(/Pool of 128/)).toBeInTheDocument()
+  expect(await screen.findByText(/Pool of 136/)).toBeInTheDocument()
 
   const row = screen.getByTestId('mock-draft-4')
   fireEvent.click(within(row).getByRole('button', { name: 'Delete' }))
-  expect(screen.getByText(/Pool of 128/)).toBeInTheDocument()
+  expect(screen.getByText(/Pool of 136/)).toBeInTheDocument()
   expect(screen.getByTestId('location')).toHaveTextContent(/^\/mock-drafts\/4$/)
 
   fireEvent.click(within(row).getByRole('button', { name: 'Are you sure' }))
@@ -541,7 +541,7 @@ test('deleting the open draft navigates to /mock-drafts and hides the detail', a
   await waitFor(() => {
     expect(screen.getByTestId('location')).toHaveTextContent(/^\/mock-drafts$/)
   })
-  expect(screen.queryByText(/Pool of 128/)).not.toBeInTheDocument()
+  expect(screen.queryByText(/Pool of 136/)).not.toBeInTheDocument()
   expect(screen.getByText('No mock drafts yet.')).toBeInTheDocument()
 })
 

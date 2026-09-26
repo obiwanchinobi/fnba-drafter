@@ -67,7 +67,7 @@ class DraftScenariosTest < ActiveSupport::TestCase
     assert_in_delta Math.sqrt(0.5), scenarios.noise_sd, 1e-12
   end
 
-  test "noise sd only measures the top 128 board entries" do
+  test "noise sd only measures the top 136 board entries" do
     board, espn_ranks = tail_swapped_board
 
     assert_in_delta 0.0, DraftScenarios.new(board: board, espn_ranks: espn_ranks, seed: 1, count: 2).noise_sd, 1e-12
@@ -76,7 +76,7 @@ class DraftScenariosTest < ActiveSupport::TestCase
   test "with no noise each opponent drafts either Total Z or the ESPN ladder, in about equal shares" do
     board, espn_ranks = tail_swapped_board
     total_z = ids(board)
-    espn = total_z[0, 128] + total_z[128, 2].reverse
+    espn = total_z[0, 136] + total_z[136, 2].reverse
 
     orders = DraftScenarios.new(board: board, espn_ranks: espn_ranks, seed: 3, count: 41)
       .drop(1).flat_map { |scenario| id_orders(scenario).values }
@@ -89,8 +89,8 @@ class DraftScenariosTest < ActiveSupport::TestCase
 
   test "a player with no ESPN rank keeps his own Total Z on the ladder" do
     board, espn_ranks = tail_swapped_board
-    espn_ranks.delete(129)
-    espn_ranks.delete(130)
+    espn_ranks.delete(137)
+    espn_ranks.delete(138)
 
     orders = DraftScenarios.new(board: board, espn_ranks: espn_ranks, seed: 3, count: 20)
       .flat_map { |scenario| id_orders(scenario).values }
@@ -100,7 +100,7 @@ class DraftScenariosTest < ActiveSupport::TestCase
 
   test "noisy orders move players by about the measured sd in Total Z units" do
     board = 300.times.map { |index| { player_id: index + 1, positions: ALL_POSITIONS, value: (300 - index) * 0.1 } }
-    # Blocks of four swap with their neighbour: every top-128 player is ranked
+    # Blocks of four swap with their neighbour: every top-136 player is ranked
     # four ladder rungs away, half up and half down, so residuals are +-0.4 and sd 0.4.
     espn_ranks = board.to_h do |entry|
       index = entry[:player_id] - 1
@@ -137,12 +137,12 @@ class DraftScenariosTest < ActiveSupport::TestCase
       board.each_with_index.to_h { |entry, index| [ entry[:player_id], ranks[index] ] }
     end
 
-    # 130 players; ESPN agrees on the top 128 and swaps 129 and 130.
+    # 138 players; ESPN agrees on the top 136 and swaps 137 and 138.
     def tail_swapped_board
-      board = 130.times.map { |index| { player_id: index + 1, positions: ALL_POSITIONS, value: 200.0 - index } }
+      board = 138.times.map { |index| { player_id: index + 1, positions: ALL_POSITIONS, value: 200.0 - index } }
       ranks = board.to_h { |entry| [ entry[:player_id], entry[:player_id] ] }
-      ranks[129] = 130
-      ranks[130] = 129
+      ranks[137] = 138
+      ranks[138] = 137
       [ board, ranks ]
     end
 

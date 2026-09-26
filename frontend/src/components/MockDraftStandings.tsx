@@ -110,7 +110,7 @@ export default function MockDraftStandings({ standings, userTeam }: Props) {
         </Table>
       </TableContainer>
       <Typography variant="caption" component="p">
-        Projected rotisserie points for all 16 rostered players, with no injury
+        Projected rotisserie points for all 17 rostered players, with no injury
         or lineup model. The large figure is roto points; the small figure
         beneath is the team's projected season total, with percentages and
         ratios as season-level rates. TO and PF are reversed: lower is better.
