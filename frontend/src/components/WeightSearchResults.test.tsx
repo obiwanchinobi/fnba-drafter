@@ -2,7 +2,7 @@ import '@testing-library/jest-dom/vitest'
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { ThemeProvider } from '@mui/material/styles'
 import { afterEach, expect, test, vi } from 'vitest'
-import type { WeightSearch, WeightSearchRun } from '../api/weightSearches.ts'
+import type { WeightSearchRun } from '../api/weightSearches.ts'
 import { DEFAULT_WEIGHTS } from '../lib/catWeights.ts'
 import theme from '../theme.ts'
 import WeightSearchResults from './WeightSearchResults.tsx'
@@ -11,39 +11,46 @@ afterEach(() => {
   cleanup()
 })
 
-function run(n: number, margin: number): WeightSearchRun {
+const RUN_AT = '2026-09-26T09:00:00.000Z'
+
+function run(
+  n: number,
+  overrides: Partial<WeightSearchRun> = {},
+): WeightSearchRun {
   return {
     user_slot: n,
     weight_set_name: `Draft slot ${n}`,
     weights: DEFAULT_WEIGHTS,
-    rank: margin > 0 ? 1 : 2,
-    roto_points: 90 + margin,
-    margin,
-    won: margin > 0,
+    rank: 1,
+    roto_points: 94.5,
+    margin: 4.5,
+    win_rate: 0.75,
+    mean_margin: 2.25,
+    worst_margin: -3.5,
+    margins: null,
+    scenario_count: 24,
+    noise_sd: 1.2,
+    budget: 300,
+    seed: 42,
+    projection_imported_at: '2026-09-22T03:00:00.000Z',
+    created_at: RUN_AT,
     draft_order: [],
     standings: [],
     picks: [],
-  }
-}
-
-function result(): WeightSearch {
-  const margins = [4.5, -2, 0, 1, 3, -0.5, 2, 6]
-  return {
-    budget: 500,
-    seed: 42,
-    projection_imported_at: '2026-09-22T03:00:00.000Z',
-    runs: margins.map((margin, index) => run(index + 1, margin)),
+    ...overrides,
   }
 }
 
 function renderResults(
+  runs: WeightSearchRun[],
   selectedSlot: number | null = null,
   onSelectSlot: (userSlot: number) => void = () => {},
 ) {
   return render(
     <ThemeProvider theme={theme}>
       <WeightSearchResults
-        result={result()}
+        runs={runs}
+        scenarioCount={24}
         userTeam="Team Chino"
         selectedSlot={selectedSlot}
         onSelectSlot={onSelectSlot}
@@ -52,57 +59,88 @@ function renderResults(
   )
 }
 
-test('renders one row per draft slot', () => {
-  renderResults()
+test('renders rows only for the slots that have a run', () => {
+  renderResults([run(2), run(5)])
 
-  for (let n = 1; n <= 8; n += 1) {
-    expect(screen.getByTestId(`weight-search-slot-${n}`)).toBeInTheDocument()
+  expect(screen.getByTestId('weight-search-slot-2')).toBeInTheDocument()
+  expect(screen.getByTestId('weight-search-slot-5')).toBeInTheDocument()
+  for (const n of [1, 3, 4, 6, 7, 8]) {
+    expect(screen.queryByTestId(`weight-search-slot-${n}`)).not.toBeInTheDocument()
   }
 })
 
-test('labels each slot Wins, Ties or Loses by margin', () => {
-  renderResults()
+test('names the confidence columns and no longer labels a single margin a win', () => {
+  renderResults([run(1)])
 
-  expect(
-    within(screen.getByTestId('weight-search-slot-1')).getByText('Wins'),
-  ).toBeInTheDocument()
-  expect(
-    within(screen.getByTestId('weight-search-slot-2')).getByText('Loses'),
-  ).toBeInTheDocument()
-  expect(
-    within(screen.getByTestId('weight-search-slot-3')).getByText('Ties'),
-  ).toBeInTheDocument()
+  for (const name of [
+    'Slot',
+    'Collection',
+    'Wins',
+    'Mean margin',
+    'Worst margin',
+    'Base margin',
+    'Last run',
+  ]) {
+    expect(screen.getByRole('columnheader', { name })).toBeInTheDocument()
+  }
+  expect(screen.queryByRole('columnheader', { name: 'Result' })).not.toBeInTheDocument()
+  expect(screen.queryByText('Loses')).not.toBeInTheDocument()
 })
 
-test('shows the saved collection name, rank, points and signed margin', () => {
-  renderResults()
+test('formats wins as scenarios won out of scenarios run', () => {
+  renderResults([
+    run(1, { win_rate: 0.75 }),
+    run(2, { win_rate: 0, scenario_count: 12 }),
+    run(3, { win_rate: null }),
+  ])
 
-  const row = within(screen.getByTestId('weight-search-slot-1'))
-  expect(row.getByText('Draft slot 1')).toBeInTheDocument()
-  expect(row.getByText('94.5')).toBeInTheDocument()
-  expect(row.getByText('+4.5')).toBeInTheDocument()
   expect(
-    within(screen.getByTestId('weight-search-slot-2')).getByText('-2'),
+    within(screen.getByTestId('weight-search-slot-1')).getByText('18 of 24'),
   ).toBeInTheDocument()
+  expect(
+    within(screen.getByTestId('weight-search-slot-2')).getByText('0 of 12'),
+  ).toBeInTheDocument()
+  expect(
+    within(screen.getByTestId('weight-search-slot-3')).queryByText(/ of /),
+  ).not.toBeInTheDocument()
 })
 
-test('names the user team column and the opponent assumption', () => {
-  renderResults()
+test('shows signed mean, worst and base margins', () => {
+  renderResults([
+    run(1, { mean_margin: 2.25, worst_margin: -3.5, margin: 4.5 }),
+    run(2, { mean_margin: -1.125, worst_margin: 0, margin: -2 }),
+  ])
+
+  const first = screen.getByTestId('weight-search-slot-1')
+  const cells = within(first).getAllByRole('cell')
+  expect(cells.map((cell) => cell.textContent)).toEqual([
+    '1',
+    'Draft slot 1',
+    '18 of 24',
+    '+2.25',
+    '-3.5',
+    '+4.5',
+    new Date(RUN_AT).toLocaleString(),
+  ])
+
+  const second = within(screen.getByTestId('weight-search-slot-2'))
+  expect(second.getByText('-1.13')).toBeInTheDocument()
+  expect(second.getByText('0')).toBeInTheDocument()
+  expect(second.getByText('-2')).toBeInTheDocument()
+})
+
+test('explains wins and the base margin', () => {
+  renderResults([run(1)])
 
   expect(
-    screen.getByRole('columnheader', { name: 'Team Chino rank' }),
+    screen.getByText(/Wins counts the scenarios where Team Chino finishes first/),
   ).toBeInTheDocument()
-  expect(
-    screen.getByText(/Searched 500 weight collections per slot/),
-  ).toBeInTheDocument()
-  expect(
-    screen.getByText(/other seven teams use unweighted Total-Z/),
-  ).toBeInTheDocument()
+  expect(screen.getByText(/Base margin is scenario 0/)).toBeInTheDocument()
 })
 
 test('clicking a slot row selects that slot', () => {
   const onSelectSlot = vi.fn()
-  renderResults(null, onSelectSlot)
+  renderResults([run(1), run(3)], null, onSelectSlot)
 
   fireEvent.click(screen.getByTestId('weight-search-slot-3'))
 
@@ -110,7 +148,7 @@ test('clicking a slot row selects that slot', () => {
 })
 
 test('marks only the selected slot row as selected', () => {
-  renderResults(3)
+  renderResults([run(1), run(3)], 3)
 
   expect(screen.getByTestId('weight-search-slot-3')).toHaveClass('Mui-selected')
   expect(screen.getByTestId('weight-search-slot-1')).not.toHaveClass(

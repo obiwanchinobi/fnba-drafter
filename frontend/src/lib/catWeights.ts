@@ -57,3 +57,24 @@ export function rankByValue(
   })
   return ranks
 }
+
+// Each weight divided by the mean of the scored weights, so 1 means average
+// emphasis and the row is unchanged by scaling every weight. Null per cat when
+// a weight is missing or the mean is not positive.
+export function relativeWeights(
+  weights: CatWeights,
+): Record<ScoredCat, number | null> {
+  const relative = {} as Record<ScoredCat, number | null>
+  let sum = 0
+  let valid = true
+  for (const cat of SCORED_CAT_IDS) {
+    const value = weights[cat]
+    if (typeof value !== 'number' || !Number.isFinite(value)) valid = false
+    else sum += value
+  }
+  const mean = sum / SCORED_CAT_IDS.length
+  for (const cat of SCORED_CAT_IDS) {
+    relative[cat] = valid && mean > 0 ? weights[cat] / mean : null
+  }
+  return relative
+}

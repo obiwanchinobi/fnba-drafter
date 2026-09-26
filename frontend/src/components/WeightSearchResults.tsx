@@ -7,33 +7,40 @@ import TableContainer from '@mui/material/TableContainer'
 import TableHead from '@mui/material/TableHead'
 import TableRow from '@mui/material/TableRow'
 import Typography from '@mui/material/Typography'
-import type { WeightSearch } from '../api/weightSearches.ts'
+import type { WeightSearchRun } from '../api/weightSearches.ts'
 
 type Props = {
-  result: WeightSearch
+  runs: WeightSearchRun[]
+  scenarioCount: number
   userTeam: string
   selectedSlot: number | null
   onSelectSlot: (userSlot: number) => void
 }
 
-function formatNumber(value: number): string {
-  if (!Number.isFinite(value)) return '—'
-  return String(value)
+// Margins are roto points; means can carry long fractions, so cap at 2 places.
+function formatMargin(margin: number | null): string {
+  if (margin == null || !Number.isFinite(margin)) return '—'
+  const rounded = Number(margin.toFixed(2))
+  return rounded > 0 ? `+${rounded}` : String(rounded)
 }
 
-function formatMargin(margin: number): string {
-  if (!Number.isFinite(margin)) return '—'
-  return margin > 0 ? `+${margin}` : String(margin)
+function formatWins(run: WeightSearchRun, scenarioCount: number): string {
+  const total = run.scenario_count ?? scenarioCount
+  if (run.win_rate == null || !Number.isFinite(run.win_rate) || !total) {
+    return '—'
+  }
+  return `${Math.round(run.win_rate * total)} of ${total}`
 }
 
-function outcome(margin: number): string {
-  if (margin > 0) return 'Wins'
-  if (margin === 0) return 'Ties'
-  return 'Loses'
+function formatWhen(value: string): string {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  return date.toLocaleString()
 }
 
 export default function WeightSearchResults({
-  result,
+  runs,
+  scenarioCount,
   userTeam,
   selectedSlot,
   onSelectSlot,
@@ -41,12 +48,10 @@ export default function WeightSearchResults({
   return (
     <Stack spacing={1}>
       <Typography variant="body2" color="text.secondary">
-        Searched {result.budget} weight collections per slot. {userTeam} ranks
-        by the found collection; the other seven teams use unweighted Total-Z.
-        Saved as &quot;Draft slot 1&quot; to &quot;Draft slot 8&quot;. A
-        projected win assumes opponents draft strictly by Total-Z, so treat a
-        thin margin as a coin flip, not a guarantee. Select a slot to see its
-        weights, draft board and standings.
+        Wins counts the scenarios where {userTeam} finishes first outright, out of the{' '}
+        {scenarioCount} it was scored on. Mean and worst margin are roto points
+        ahead of (or behind) the best other team across those scenarios. Base
+        margin is scenario 0, the board shown when you select a slot.
       </Typography>
       <TableContainer component={Paper} variant="outlined">
         <Table size="small" aria-label="Winning weights by slot">
@@ -54,14 +59,15 @@ export default function WeightSearchResults({
             <TableRow>
               <TableCell>Slot</TableCell>
               <TableCell>Collection</TableCell>
-              <TableCell align="right">{userTeam} rank</TableCell>
-              <TableCell align="right">Roto points</TableCell>
-              <TableCell align="right">Margin</TableCell>
-              <TableCell>Result</TableCell>
+              <TableCell align="right">Wins</TableCell>
+              <TableCell align="right">Mean margin</TableCell>
+              <TableCell align="right">Worst margin</TableCell>
+              <TableCell align="right">Base margin</TableCell>
+              <TableCell>Last run</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
-            {result.runs.map((run) => (
+            {runs.map((run) => (
               <TableRow
                 key={run.user_slot}
                 hover
@@ -72,12 +78,17 @@ export default function WeightSearchResults({
               >
                 <TableCell>{run.user_slot}</TableCell>
                 <TableCell>{run.weight_set_name}</TableCell>
-                <TableCell align="right">{run.rank}</TableCell>
                 <TableCell align="right">
-                  {formatNumber(run.roto_points)}
+                  {formatWins(run, scenarioCount)}
+                </TableCell>
+                <TableCell align="right">
+                  {formatMargin(run.mean_margin)}
+                </TableCell>
+                <TableCell align="right">
+                  {formatMargin(run.worst_margin)}
                 </TableCell>
                 <TableCell align="right">{formatMargin(run.margin)}</TableCell>
-                <TableCell>{outcome(run.margin)}</TableCell>
+                <TableCell>{formatWhen(run.created_at)}</TableCell>
               </TableRow>
             ))}
           </TableBody>
