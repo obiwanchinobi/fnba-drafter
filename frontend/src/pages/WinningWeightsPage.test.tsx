@@ -148,9 +148,15 @@ test('explains the scenarios and shows an empty state when nothing is saved', as
   const intro = screen.getByText(/searches weight collections for one Team Chino/)
   expect(intro).toHaveTextContent('scored across 24 modelled draft rooms')
   expect(intro).toHaveTextContent('drafts from Total-Z or ESPN rank with random noise')
-  expect(intro).toHaveTextContent('Win rate is the share of scenarios')
   expect(intro).toHaveTextContent('scenario 0 is the base room')
-  expect(intro).toHaveTextContent('under about 60 percent as competitive, not winning')
+  expect(intro).toHaveTextContent(
+    'saves the best one that finishes first outright in the base room',
+  )
+  expect(intro).toHaveTextContent('Win rate is the share of scenarios')
+  expect(intro).toHaveTextContent(
+    'read Wins as a tie-breaker among base-room winners, not as a forecast',
+  )
+  expect(intro).not.toHaveTextContent('60 percent')
   expect(screen.queryByText(/^Wins [+-]/)).not.toBeInTheDocument()
 
   expect(

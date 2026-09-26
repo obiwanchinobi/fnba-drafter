@@ -1,13 +1,14 @@
-# Searches, for one Team Chino draft slot, for the weight collection that wins
-# the most of a seeded set of modelled draft rooms (DraftScenarios), then has
-# the best mean and worst roto margin over the next-best team. The result is
-# saved as that slot's WeightSearchRun (replacing any earlier one for the slot)
-# and as a "Draft slot N" weight set; the stored margin, rank, points, picks and
-# standings are the base scenario's.
+# Searches, for one Team Chino draft slot, for the weight collection that
+# finishes first outright in the base room (scenario 0, the Mock drafts room),
+# then wins the most of a seeded set of modelled draft rooms (DraftScenarios),
+# then has the best mean and worst roto margin over the next-best team. The
+# result is saved as that slot's WeightSearchRun (replacing any earlier one for
+# the slot) and as a "Draft slot N" weight set; the stored margin, rank, points,
+# picks and standings are the base scenario's.
 #
 # A found collection is fitted to those opponent models and to the projection
-# snapshot recorded on the run; its win rate is against modelled rooms, not a
-# forecast of the league. WeightHillClimb runs the search.
+# snapshot recorded on the run; its win rate is against modelled rooms, a
+# tie-breaker among base-room winners, not a forecast of the league. WeightHillClimb runs the search.
 class WeightSearch
   # Scenarios per candidate, including the base scenario.
   SCENARIO_COUNT = 24

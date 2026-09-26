@@ -2,18 +2,21 @@
 #
 # Every candidate is drafted once per DraftScenarios scenario (the same fixed
 # set of opponent rooms for every candidate) and scored on its roto margin over
-# the next-best team in each. Candidates compare on
-# [win_rate, mean_margin, worst_margin]. Scenario 0 is the base room (seven
-# unweighted Total-Z opponents, the MockDraft model); the stored margin, rank,
-# points, picks and standings come from it so a result replays on the Mock
-# drafts page. Win rate is against modelled rooms, not a forecast of the league.
+# the next-best team in each. Scenario 0 is the base room (seven unweighted
+# Total-Z opponents, the MockDraft model); the stored margin, rank, points,
+# picks and standings come from it so a result replays on the Mock drafts page.
+# A candidate that finishes first outright in the base room beats any that does
+# not; after that candidates compare on win rate, mean margin, worst margin.
+# Win rate is against modelled rooms, a tie-breaker among base-room winners,
+# not a forecast of the league.
 #
 # Plateau moves and random restarts keep the climb moving; `budget` bounds the
 # evaluations per slot.
 class WeightHillClimb
   STEPS = [ 0.05, 0.25, 0.5, 1.0 ].freeze
   PLATEAU_RESTART = 50
-  OBJECTIVE = %i[win_rate mean_margin worst_margin].freeze
+  # After the base-room gate (won), compared in this order.
+  TIE_BREAKERS = %i[win_rate mean_margin worst_margin].freeze
 
   # scenarios: a DraftScenarios over the unweighted board.
   def initialize(scenarios, by_player_id, rng)
@@ -49,7 +52,11 @@ class WeightHillClimb
 
   private
     def better?(left, right)
-      (left.values_at(*OBJECTIVE) <=> right.values_at(*OBJECTIVE)).positive?
+      (objective(left) <=> objective(right)).positive?
+    end
+
+    def objective(evaluation)
+      [ evaluation[:won] ? 1 : 0, *evaluation.values_at(*TIE_BREAKERS) ]
     end
 
     # Chino's weighted order is sorted once and shared by every scenario.

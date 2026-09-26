@@ -156,9 +156,10 @@ test('shows the base scenario rank as an ordinal, matching the standings table',
 test('explains wins and the base margin', () => {
   renderResults([run(1)])
 
-  expect(
-    screen.getByText(/Wins counts the scenarios where Team Chino finishes first/),
-  ).toBeInTheDocument()
+  const note = screen.getByText(/Wins counts the scenarios where Team Chino finishes first/)
+  expect(note).toHaveTextContent(
+    'A collection must finish first outright in the base room before Wins is compared.',
+  )
   expect(screen.getByText(/Base margin is scenario 0/)).toBeInTheDocument()
   expect(screen.getByText(/Base rank is where Team Chino finishes/)).toBeInTheDocument()
 })

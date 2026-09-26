@@ -59,7 +59,9 @@ class WeightSearchTest < ActiveSupport::TestCase
     assert_in_delta best[:win_rate], run.win_rate.to_f, 1e-9
     assert_in_delta best[:mean_margin], run.mean_margin.to_f, 1e-9
     assert_in_delta best[:worst_margin], run.worst_margin.to_f, 1e-9
-    assert_in_delta objective(run.margins)[0], run.win_rate.to_f, 1e-9
+    assert_in_delta objective(run.margins)[1], run.win_rate.to_f, 1e-9
+    assert_equal best[:won], run.won
+    assert_equal objective(run.margins)[0] == 1, run.won
   end
 
   test "the saved margins are the run's replayed scenario margins, scenario 0 first" do

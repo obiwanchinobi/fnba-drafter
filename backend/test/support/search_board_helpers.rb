@@ -80,9 +80,15 @@ module SearchBoardHelpers
       end
     end
 
-    # The search objective for a list of margins.
+    # The search objective for a list of margins, base scenario first: won the
+    # base room outright, then win rate, mean margin, worst margin.
     def objective(margins)
-      [ margins.count(&:positive?).fdiv(margins.size), margins.sum.fdiv(margins.size), margins.min ]
+      [
+        margins.first.positive? ? 1 : 0,
+        margins.count(&:positive?).fdiv(margins.size),
+        margins.sum.fdiv(margins.size),
+        margins.min
+      ]
     end
 
     def varied_line(stats)

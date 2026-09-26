@@ -50,19 +50,90 @@ class WeightHillClimbTest < ActiveSupport::TestCase
     end
   end
 
-  test "the best weights never do worse than equal weights on win rate, mean margin, worst margin" do
+  test "the best weights never do worse than equal weights on base room won, win rate, mean margin, worst margin" do
     equal = WeightSet::CATEGORIES.index_with { 1.0 }
     scenarios = search_scenarios(SEED, SCENARIO_COUNT)
 
     improved = 0
     bests_by_slot.each do |user_slot, best|
-      comparison = best.values_at(:win_rate, :mean_margin, :worst_margin) <=>
+      comparison = [ best[:won] ? 1 : 0, *best.values_at(:win_rate, :mean_margin, :worst_margin) ] <=>
         objective(replay_margins(user_slot, equal, scenarios))
 
       assert_operator comparison, :>=, 0, "slot #{user_slot}"
       improved += 1 if comparison.positive?
     end
     assert_operator improved, :>, 0, "search should improve on equal weights for at least one slot"
+  end
+
+  test "a candidate that wins the base room beats one that loses it regardless of win rate" do
+    winner = { won: true, win_rate: 0.34, mean_margin: -2.0, worst_margin: -9.0 }
+    loser = { won: false, win_rate: 1.0, mean_margin: 12.0, worst_margin: 3.0 }
+
+    assert climb.send(:better?, winner, loser)
+    refute climb.send(:better?, loser, winner)
+  end
+
+  test "among base-room winners the order is win rate, then mean margin, then worst margin" do
+    search = climb
+    low = { won: true, win_rate: 0.5, mean_margin: 9.0, worst_margin: 5.0 }
+    rate = { won: true, win_rate: 0.75, mean_margin: 1.0, worst_margin: -5.0 }
+    mean = { won: true, win_rate: 0.75, mean_margin: 2.0, worst_margin: -9.0 }
+    worst = { won: true, win_rate: 0.75, mean_margin: 2.0, worst_margin: -1.0 }
+
+    assert search.send(:better?, rate, low)
+    assert search.send(:better?, mean, rate)
+    assert search.send(:better?, worst, mean)
+    refute search.send(:better?, low, rate)
+    refute search.send(:better?, worst, worst)
+  end
+
+  # Records whether each evaluated candidate finished first in the base room.
+  class RecordingClimb < WeightHillClimb
+    def evaluated_won
+      @evaluated_won ||= []
+    end
+
+    private
+      def evaluate(order, weights)
+        super.tap { |evaluation| evaluated_won << evaluation[:won] }
+      end
+  end
+
+  test "best_for returns a base-room winner whenever one was evaluated" do
+    scenarios = search_scenarios(SEED, SCENARIO_COUNT)
+    by_player_id = espn_projections.index_by(&:player_id)
+
+    1.upto(League::TEAM_COUNT) do |user_slot|
+      recording = RecordingClimb.new(scenarios, by_player_id, Random.new(SEED))
+      best = recording.best_for(user_slot, BUDGET)
+
+      assert_equal recording.evaluated_won.any?, best[:won], "slot #{user_slot}"
+    end
+  end
+
+  # Equal weights lose the base room but win every other room; only the second
+  # candidate wins the base room, and it loses every other room.
+  class OneBaseWinnerClimb < WeightHillClimb
+    def initialize(rng)
+      @rng = rng
+      @evaluations = 0
+    end
+
+    private
+      def evaluate(_order, weights)
+        @evaluations += 1
+        won = @evaluations == 2
+        win_rate = if won then 1.fdiv(3) elsif @evaluations == 1 then 2.fdiv(3) else 0.0 end
+        { won: won, win_rate: win_rate, mean_margin: won ? -5.0 : 5.0, worst_margin: -9.0, weights: weights,
+          evaluation: @evaluations }
+      end
+  end
+
+  test "best_for keeps a base-room winner over candidates that win more of the other rooms" do
+    best = OneBaseWinnerClimb.new(Random.new(SEED)).best_for(3, 10)
+
+    assert best[:won]
+    assert_equal 2, best[:evaluation]
   end
 
   test "weights are in range, on 0.05 steps, and cover every scored category" do

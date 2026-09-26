@@ -122,16 +122,21 @@ export default function WinningWeightsPage() {
         </Typography>
         <Typography variant="body2" color="text.secondary">
           Find winning weights searches weight collections for one {USER_TEAM}{' '}
-          draft slot at a time on FNBA Total-Z season totals, and saves the best
-          one as &quot;Draft slot N&quot;. Each collection is scored across{' '}
-          {scenarioCount ?? 'a fixed set of'} modelled draft rooms. In every
-          scenario after the first, each of the seven opponents drafts from
-          Total-Z or ESPN rank with random noise; scenario 0 is the base room, where every opponent drafts by
-          unweighted Total-Z, and it is the board shown for a slot. Win rate is
-          the share of scenarios in which {USER_TEAM} finishes first outright. It is measured
-          against modelled rooms, not a forecast of eight people on draft
-          night: read a win rate under about 60 percent as competitive, not
-          winning. The saved collections appear in the Weights list on Mock
+          draft slot at a time on FNBA Total-Z season totals. Each collection is
+          scored across {scenarioCount ?? 'a fixed set of'} modelled draft
+          rooms. In every scenario after the first, each of the seven opponents
+          drafts from Total-Z or ESPN rank with random noise; scenario 0 is the
+          base room, where every opponent drafts by unweighted Total-Z, the
+          room Mock drafts simulates and the board shown for a slot. The search
+          saves the best one that finishes first outright in the base room as
+          &quot;Draft slot N&quot; (if none does, the best of the rest): among
+          those, the one that wins the most of the other rooms, then the best
+          mean and worst margin. Win rate is the
+          share of scenarios in which {USER_TEAM} finishes first outright. It
+          is measured against modelled rooms, not a forecast of eight people on
+          draft night, and equal weights already win most of the noisy rooms,
+          so read Wins as a tie-breaker among base-room winners, not as a
+          forecast. The saved collections appear in the Weights list on Mock
           drafts, so you can test any of them across every slot.
         </Typography>
         <Stack

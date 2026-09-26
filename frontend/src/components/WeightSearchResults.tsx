@@ -55,7 +55,9 @@ export default function WeightSearchResults({
   return (
     <Stack spacing={1}>
       <Typography variant="body2" color="text.secondary">
-        Wins counts the scenarios where {userTeam} finishes first outright, out of the{' '}
+        A collection must finish first outright in the base room before Wins
+        is compared. Wins counts the scenarios where {userTeam} finishes first
+        outright, out of the{' '}
         {scenarioCount} it was scored on. Mean and worst margin are roto points
         ahead of (or behind) the best other team across those scenarios. Base
         margin is scenario 0, the board shown when you select a slot. Base rank
