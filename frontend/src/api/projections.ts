@@ -77,7 +77,7 @@ export type ProjectionRefresh = {
   imported_at: string
 }
 
-const REFRESH_ERROR_MESSAGES: Record<string, string> = {
+export const REFRESH_ERROR_MESSAGES: Record<string, string> = {
   espn_credentials_missing:
     'Log in to ESPN in Chrome, then try Update from source again',
   espn_cookies_unreadable:
