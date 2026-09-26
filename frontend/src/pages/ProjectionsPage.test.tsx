@@ -3,13 +3,31 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import { ThemeProvider } from '@mui/material/styles'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import type { ReactElement } from 'react'
+import { MemoryRouter, useLocation } from 'react-router'
 import type { Projection } from '../api/projections.ts'
 import { DEFAULT_WEIGHTS } from '../lib/catWeights.ts'
 import theme from '../theme.ts'
 import ProjectionsPage from './ProjectionsPage.tsx'
 
-function renderPage(ui: ReactElement) {
-  return render(<ThemeProvider theme={theme}>{ui}</ThemeProvider>)
+function LocationProbe() {
+  const location = useLocation()
+  return (
+    <div data-testid="location">{`${location.pathname}${location.search}`}</div>
+  )
+}
+
+function renderPage(
+  ui: ReactElement,
+  initialEntries: string[] = ['/projections'],
+) {
+  return render(
+    <ThemeProvider theme={theme}>
+      <MemoryRouter initialEntries={initialEntries}>
+        {ui}
+        <LocationProbe />
+      </MemoryRouter>
+    </ThemeProvider>,
+  )
 }
 
 function projectionRow(
@@ -138,6 +156,22 @@ function stubProjections(
         }
         sets = [...sets, created]
         return jsonBody(created)
+      }
+      if (method === 'PATCH') {
+        const id = Number(url.split('/').pop())
+        const body = JSON.parse(String(init?.body ?? '{}')) as {
+          name?: string
+          weights?: Record<string, number>
+        }
+        const existing = sets.find((set) => set.id === id)
+        const updated = {
+          id,
+          name: body.name ?? existing?.name ?? '',
+          weights: body.weights ?? existing?.weights ?? {},
+          updated_at: '2026-09-23T12:00:00.000Z',
+        }
+        sets = sets.map((set) => (set.id === id ? updated : set))
+        return jsonBody(updated)
       }
       if (method === 'DELETE') {
         const id = Number(url.split('/').pop())
@@ -325,6 +359,7 @@ test('search jok leaves one player and does not refetch', async () => {
   expect(screen.queryByText('Shai Gilgeous-Alexander')).not.toBeInTheDocument()
   expect(screen.queryByText('Jayson Tatum')).not.toBeInTheDocument()
   expect(fetchMock).toHaveBeenCalledTimes(2)
+  expect(screen.getByTestId('location')).toHaveTextContent('/projections?q=jok')
 })
 
 test('position C keeps centers', async () => {
@@ -339,6 +374,7 @@ test('position C keeps centers', async () => {
   expect(playerNames()).toEqual(['Nikola Jokic'])
   expect(screen.queryByText('Shai Gilgeous-Alexander')).not.toBeInTheDocument()
   expect(screen.queryByText('Jayson Tatum')).not.toBeInTheDocument()
+  expect(screen.getByTestId('location')).toHaveTextContent('/projections?pos=C')
 })
 
 test('position G keeps guards and F/C keeps forwards and centers', async () => {
@@ -372,6 +408,9 @@ test('team DEN keeps Nuggets and does not refetch', async () => {
   expect(screen.queryByText('Shai Gilgeous-Alexander')).not.toBeInTheDocument()
   expect(screen.queryByText('Jayson Tatum')).not.toBeInTheDocument()
   expect(fetchMock).toHaveBeenCalledTimes(2)
+  expect(screen.getByTestId('location')).toHaveTextContent(
+    '/projections?teams=DEN',
+  )
 })
 
 test('clicking PTS header reorders rows by points', async () => {
@@ -395,7 +434,7 @@ test('clicking PTS header reorders rows by points', async () => {
   ])
 })
 
-test('clicking Rank header sorts ESPN rank ascending first with NULL last', async () => {
+test('clicking ESPN Rank header sorts ESPN rank ascending first with NULL last', async () => {
   stubProjections([
     projectionRow({
       id: 2,
@@ -434,11 +473,11 @@ test('clicking Rank header sorts ESPN rank ascending first with NULL last', asyn
   const headers = screen
     .getAllByRole('columnheader')
     .map((header) => header.textContent)
-  expect(headers.filter((header) => header === 'Rank')).toHaveLength(1)
-  const rankIndex = headers.indexOf('Rank')
+  expect(headers.filter((header) => header === 'ESPN Rank')).toHaveLength(1)
+  const rankIndex = headers.indexOf('ESPN Rank')
   expect(rankIndex).toBeGreaterThan(-1)
 
-  const rankHeader = screen.getByRole('button', { name: /^Rank$/ })
+  const rankHeader = screen.getByRole('button', { name: /^ESPN Rank$/ })
 
   fireEvent.click(rankHeader)
   expect(playerNames()).toEqual([
@@ -679,6 +718,9 @@ test('switching to actuals fetches season stats and labels the dataset', async (
     '/api/season_stats?source=espn&season=2026',
   )
   expect(screen.getByTestId('dataset-chip')).toHaveTextContent('Actual')
+  expect(screen.getByTestId('location')).toHaveTextContent(
+    '/projections?dataset=actual&sort=pts',
+  )
   expect(
     screen.queryByText(
       'Italic values are FNBA estimates. ESPN does not project OREB, DREB, PF, DD or TD.',
@@ -723,7 +765,7 @@ test('toggling to z-scores then clicking TO puts the fewest-turnover player firs
   expect(playerNames()).toEqual(['Low TO', 'Mid TO', 'High TO'])
 })
 
-test('clicking Total Z orders by the composite', async () => {
+test('toggling to z-scores orders by the composite and clicking Total Z flips it', async () => {
   stubProjections([
     projectionRow({
       id: 1,
@@ -752,63 +794,140 @@ test('clicking Total Z orders by the composite', async () => {
 
   expect(await screen.findByText('Low BLK')).toBeInTheDocument()
   fireEvent.click(screen.getByRole('button', { name: 'Z-scores' }))
-  fireEvent.click(screen.getByRole('button', { name: 'Total Z' }))
-
   expect(playerNames()).toEqual(['High BLK', 'Mid BLK', 'Low BLK'])
+
+  fireEvent.click(screen.getByRole('button', { name: 'Total Z' }))
+  expect(playerNames()).toEqual(['Low BLK', 'Mid BLK', 'High BLK'])
+  expect(screen.getByRole('columnheader', { name: 'Total Z' })).toHaveAttribute(
+    'aria-sort',
+    'ascending',
+  )
 })
 
-test('toggling view keeps the active sort column', async () => {
+test('toggling to z-scores sorts by Total Z and back to values clears the z sort', async () => {
+  // PTS feeds the composite twice (PTS and PPM), so the Scorer leads Total Z
+  // while the Blocker beats the Bystander on BLK alone.
   stubProjections([
     projectionRow({
       id: 1,
-      full_name: 'Nikola Jokic',
+      full_name: 'Bystander',
       positions: ['C'],
       nba_team: 'DEN',
-      pts: 2050,
+      blk: 10,
+      pts: 2000,
     }),
     projectionRow({
       id: 2,
-      full_name: 'Shai Gilgeous-Alexander',
+      full_name: 'Blocker',
       positions: ['PG'],
       nba_team: 'OKC',
-      pts: 2500,
+      blk: 80,
+      pts: 2000,
     }),
     projectionRow({
       id: 3,
-      full_name: 'Jayson Tatum',
+      full_name: 'Scorer',
       positions: ['SF', 'PF'],
       nba_team: 'BOS',
-      pts: 1500,
+      blk: 40,
+      pts: 2200,
     }),
   ])
 
   renderPage(<ProjectionsPage />)
 
-  expect(await screen.findByText('Nikola Jokic')).toBeInTheDocument()
+  expect(await screen.findByText('Bystander')).toBeInTheDocument()
+  expect(playerNames()).toEqual(['Bystander', 'Blocker', 'Scorer'])
+
   fireEvent.click(screen.getByRole('button', { name: /^PTS$/ }))
-  expect(playerNames()).toEqual([
-    'Shai Gilgeous-Alexander',
-    'Nikola Jokic',
-    'Jayson Tatum',
-  ])
+  expect(playerNames()).toEqual(['Scorer', 'Bystander', 'Blocker'])
 
   fireEvent.click(screen.getByRole('button', { name: 'Z-scores' }))
-  expect(playerNames()).toEqual([
-    'Shai Gilgeous-Alexander',
-    'Nikola Jokic',
-    'Jayson Tatum',
-  ])
-  expect(screen.getByRole('columnheader', { name: /^PTS$/ })).toHaveAttribute(
+  expect(playerNames()).toEqual(['Scorer', 'Blocker', 'Bystander'])
+  expect(screen.getByRole('columnheader', { name: 'Total Z' })).toHaveAttribute(
     'aria-sort',
     'descending',
   )
+  expect(
+    screen.getByRole('columnheader', { name: /^PTS$/ }),
+  ).not.toHaveAttribute('aria-sort')
+  expect(screen.getByTestId('location')).toHaveTextContent(
+    '/projections?view=z&sort=z_total',
+  )
 
   fireEvent.click(screen.getByRole('button', { name: 'Values' }))
-  expect(playerNames()).toEqual([
-    'Shai Gilgeous-Alexander',
-    'Nikola Jokic',
-    'Jayson Tatum',
-  ])
+  expect(playerNames()).toEqual(['Bystander', 'Blocker', 'Scorer'])
+  expect(
+    screen.queryByRole('columnheader', { name: 'Total Z' }),
+  ).not.toBeInTheDocument()
+  expect(
+    screen.getByRole('columnheader', { name: /^PTS$/ }),
+  ).not.toHaveAttribute('aria-sort')
+  expect(screen.getByTestId('location').textContent).toBe('/projections')
+})
+
+test('toggling to z-scores with an active collection sorts by Weighted Z', async () => {
+  // Foul Light leads Total Z on fouls; zeroing PF lifts Foul Heavy on blocks.
+  stubProjections(
+    [
+      projectionRow({
+        id: 1,
+        full_name: 'Foul Light',
+        positions: ['C'],
+        nba_team: 'DEN',
+        pf: 80,
+        blk: 40,
+      }),
+      projectionRow({
+        id: 2,
+        full_name: 'Foul Average',
+        positions: ['SF'],
+        nba_team: 'BOS',
+        pf: 160,
+        blk: 30,
+      }),
+      projectionRow({
+        id: 3,
+        full_name: 'Foul Heavy',
+        positions: ['PG'],
+        nba_team: 'OKC',
+        pf: 240,
+        blk: 80,
+      }),
+    ],
+    [
+      {
+        id: 9,
+        name: 'Bench fouls',
+        weights: { ...DEFAULT_WEIGHTS, pf: 0 },
+        updated_at: '2026-09-22T12:00:00.000Z',
+      },
+    ],
+  )
+
+  renderPage(<ProjectionsPage />, ['/projections?weights=9'])
+
+  expect(await screen.findByText('Foul Heavy')).toBeInTheDocument()
+  expect(playerNames()).toEqual(['Foul Light', 'Foul Average', 'Foul Heavy'])
+  expect(
+    screen.queryByRole('columnheader', { name: 'Weighted Z' }),
+  ).not.toBeInTheDocument()
+
+  fireEvent.click(screen.getByRole('button', { name: 'Z-scores' }))
+
+  expect(playerNames()).toEqual(['Foul Heavy', 'Foul Light', 'Foul Average'])
+  expect(
+    screen.getByRole('columnheader', { name: 'Weighted Z' }),
+  ).toHaveAttribute('aria-sort', 'descending')
+  expect(
+    screen.getByRole('columnheader', { name: 'Total Z' }),
+  ).not.toHaveAttribute('aria-sort')
+  expect(screen.getByTestId('location')).toHaveTextContent(
+    '/projections?view=z&weights=9&sort=z_weighted',
+  )
+
+  fireEvent.click(screen.getByRole('button', { name: 'Total Z' }))
+  expect(playerNames()).toEqual(['Foul Light', 'Foul Heavy', 'Foul Average'])
 })
 
 test('search filtering does not change a player displayed z', async () => {
@@ -1034,11 +1153,16 @@ test('a non-default collection shows weighted z and the rank change beside total
     }),
   ).toBeInTheDocument()
 
-  fireEvent.click(screen.getByRole('button', { name: 'Total Z' }))
-  expect(playerNames()).toEqual(['Foul Light', 'Foul Heavy'])
-
-  fireEvent.click(screen.getByRole('button', { name: 'Weighted Z' }))
+  expect(
+    screen.getByRole('columnheader', { name: 'Weighted Z' }),
+  ).toHaveAttribute('aria-sort', 'descending')
+  expect(
+    screen.getByRole('columnheader', { name: 'Total Z' }),
+  ).not.toHaveAttribute('aria-sort')
   expect(playerNames()).toEqual(['Foul Heavy', 'Foul Light'])
+  expect(screen.getByTestId('location')).toHaveTextContent(
+    '/projections?view=z&weights=9&sort=z_weighted',
+  )
   expect(cellByHeader('Foul Heavy', 'Δ Rank').textContent).toBe('+1')
   expect(cellByHeader('Foul Light', 'Δ Rank').textContent).toBe('-1')
 
@@ -1079,6 +1203,9 @@ test('a non-default collection shows weighted z and the rank change beside total
     'descending',
   )
   expect(playerNames()).toEqual(['Foul Light', 'Foul Heavy'])
+  expect(screen.getByTestId('location')).toHaveTextContent(
+    '/projections?view=z&sort=z_total',
+  )
   expect(
     screen.queryByText(/Weighted Z applies "Bench fouls"/),
   ).not.toBeInTheDocument()
@@ -1151,6 +1278,150 @@ test('saving a collection reloads weight sets and selects the saved name', async
   ])
 })
 
+// Foul Light leads Total Z on fouls; zeroing PF lifts Foul Heavy to the top
+// on blocks.
+const FOUL_ROWS: Projection[] = [
+  projectionRow({
+    id: 1,
+    full_name: 'Foul Light',
+    positions: ['C'],
+    nba_team: 'DEN',
+    pf: 80,
+    blk: 40,
+  }),
+  projectionRow({
+    id: 2,
+    full_name: 'Foul Average',
+    positions: ['SF'],
+    nba_team: 'BOS',
+    pf: 160,
+    blk: 30,
+  }),
+  projectionRow({
+    id: 3,
+    full_name: 'Foul Heavy',
+    positions: ['PG'],
+    nba_team: 'OKC',
+    pf: 240,
+    blk: 80,
+  }),
+]
+
+const BENCH_FOULS = {
+  id: 9,
+  name: 'Bench fouls',
+  weights: { ...DEFAULT_WEIGHTS, pf: 0 },
+  updated_at: '2026-09-22T12:00:00.000Z',
+}
+
+test('saving a collection sorts by Weighted Z', async () => {
+  stubProjections(FOUL_ROWS)
+
+  renderPage(<ProjectionsPage />)
+
+  expect(await screen.findByText('Foul Heavy')).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Z-scores' }))
+  expect(playerNames()).toEqual(['Foul Light', 'Foul Heavy', 'Foul Average'])
+
+  fireEvent.click(screen.getByRole('button', { name: 'New weights' }))
+  const dialog = screen.getByRole('dialog')
+  fireEvent.change(within(dialog).getByLabelText('Name'), {
+    target: { value: 'Punt fouls' },
+  })
+  fireEvent.change(within(dialog).getByLabelText('PF'), {
+    target: { value: '0' },
+  })
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Save' }))
+
+  await waitFor(() => {
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(
+      screen.getByRole('columnheader', { name: 'Weighted Z' }),
+    ).toHaveAttribute('aria-sort', 'descending')
+  })
+  expect(playerNames()).toEqual(['Foul Heavy', 'Foul Light', 'Foul Average'])
+  expect(
+    screen.getByRole('columnheader', { name: 'Total Z' }),
+  ).not.toHaveAttribute('aria-sort')
+  expect(screen.getByTestId('location')).toHaveTextContent(
+    '/projections?view=z&weights=1&sort=z_weighted',
+  )
+})
+
+test('selecting a collection from the Weights select sorts by Weighted Z', async () => {
+  stubProjections(FOUL_ROWS, [BENCH_FOULS])
+
+  renderPage(<ProjectionsPage />)
+
+  expect(await screen.findByText('Foul Heavy')).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Z-scores' }))
+  expect(playerNames()).toEqual(['Foul Light', 'Foul Heavy', 'Foul Average'])
+  expect(screen.getByRole('columnheader', { name: 'Total Z' })).toHaveAttribute(
+    'aria-sort',
+    'descending',
+  )
+
+  fireEvent.mouseDown(screen.getByRole('combobox', { name: /weights/i }))
+  fireEvent.click(await screen.findByRole('option', { name: 'Bench fouls' }))
+
+  expect(playerNames()).toEqual(['Foul Heavy', 'Foul Light', 'Foul Average'])
+  expect(
+    screen.getByRole('columnheader', { name: 'Weighted Z' }),
+  ).toHaveAttribute('aria-sort', 'descending')
+  expect(
+    screen.getByRole('columnheader', { name: 'Total Z' }),
+  ).not.toHaveAttribute('aria-sort')
+  expect(screen.getByTestId('location')).toHaveTextContent(
+    '/projections?view=z&weights=9&sort=z_weighted',
+  )
+})
+
+test('editing the active collection re-sorts by Weighted Z', async () => {
+  const fetchMock = stubProjections(FOUL_ROWS, [BENCH_FOULS])
+
+  renderPage(<ProjectionsPage />, ['/projections?view=z&weights=9&sort=pts'])
+
+  expect(await screen.findByText('Foul Heavy')).toBeInTheDocument()
+  expect(screen.getByRole('combobox', { name: /weights/i })).toHaveTextContent(
+    'Bench fouls',
+  )
+  expect(screen.getByRole('columnheader', { name: /^PTS$/ })).toHaveAttribute(
+    'aria-sort',
+    'descending',
+  )
+  expect(screen.getByTestId('location')).toHaveTextContent(
+    '/projections?view=z&weights=9&sort=pts',
+  )
+
+  fireEvent.click(screen.getByRole('button', { name: 'Edit weights' }))
+  const dialog = screen.getByRole('dialog')
+  expect(within(dialog).getByLabelText('Name')).toHaveValue('Bench fouls')
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Save' }))
+
+  await waitFor(() => {
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(screen.getByTestId('location')).toHaveTextContent(
+      '/projections?view=z&weights=9&sort=z_weighted',
+    )
+  })
+  expect(playerNames()).toEqual(['Foul Heavy', 'Foul Light', 'Foul Average'])
+  expect(
+    screen.getByRole('columnheader', { name: 'Weighted Z' }),
+  ).toHaveAttribute('aria-sort', 'descending')
+  expect(
+    screen.getByRole('columnheader', { name: /^PTS$/ }),
+  ).not.toHaveAttribute('aria-sort')
+  expect(
+    fetchMock.mock.calls
+      .filter(([input]) => String(input).includes('/api/weight_sets'))
+      .map(([input, init]) => [String(input), init?.method ?? 'GET']),
+  ).toEqual([
+    ['/api/weight_sets', 'GET'],
+    ['/api/weight_sets/9', 'PATCH'],
+    ['/api/weight_sets', 'GET'],
+  ])
+})
+
 test('deleting the active collection returns to Default and removes weighted columns', async () => {
   const fetchMock = stubProjections(
     [
@@ -1185,7 +1456,6 @@ test('deleting the active collection returns to Default and removes weighted col
   fireEvent.click(screen.getByRole('button', { name: 'Z-scores' }))
   fireEvent.mouseDown(screen.getByRole('combobox', { name: /weights/i }))
   fireEvent.click(screen.getByRole('option', { name: 'Bench fouls' }))
-  fireEvent.click(screen.getByRole('button', { name: 'Weighted Z' }))
   expect(
     screen.getByRole('columnheader', { name: 'Weighted Z' }),
   ).toHaveAttribute('aria-sort', 'descending')
@@ -1215,6 +1485,9 @@ test('deleting the active collection returns to Default and removes weighted col
     'aria-sort',
     'descending',
   )
+  expect(screen.getByTestId('location')).toHaveTextContent(
+    '/projections?view=z&sort=z_total',
+  )
   expect(
     screen.queryByText(/Weighted Z applies "Bench fouls"/),
   ).not.toBeInTheDocument()
@@ -1230,4 +1503,196 @@ test('deleting the active collection returns to Default and removes weighted col
     ['/api/weight_sets/9', 'DELETE'],
     ['/api/weight_sets', 'GET'],
   ])
+})
+
+test('query params initialise the toolbar and table', async () => {
+  stubProjections(THREE_ROWS)
+
+  renderPage(<ProjectionsPage />, [
+    '/projections?view=z&basis=total&pos=C&q=jok&sort=pts&dir=asc',
+  ])
+
+  expect(await screen.findByText('Nikola Jokic')).toBeInTheDocument()
+  expect(playerNames()).toEqual(['Nikola Jokic'])
+  expect(screen.queryByText('Shai Gilgeous-Alexander')).not.toBeInTheDocument()
+  expect(screen.getByLabelText(/player name/i)).toHaveValue('jok')
+  expect(screen.getByRole('button', { name: 'Z-scores' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  )
+  expect(screen.getByRole('button', { name: 'Season totals' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  )
+  expect(screen.getByRole('button', { name: /^C$/ })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  )
+  expect(screen.getByRole('columnheader', { name: 'Total Z' })).toBeInTheDocument()
+  expect(screen.getByRole('columnheader', { name: /^PTS$/ })).toHaveAttribute(
+    'aria-sort',
+    'ascending',
+  )
+  expect(screen.getByTestId('location')).toHaveTextContent(
+    '/projections?view=z&basis=total&pos=C&q=jok&sort=pts&dir=asc',
+  )
+
+  fireEvent.click(screen.getByRole('button', { name: 'Values' }))
+
+  expect(screen.queryByRole('columnheader', { name: 'Total Z' })).not.toBeInTheDocument()
+  expect(cellByHeader('Nikola Jokic', 'PTS')).toHaveTextContent('2050')
+  expect(screen.getByTestId('location')).toHaveTextContent(
+    '/projections?basis=total&pos=C&q=jok&sort=pts&dir=asc',
+  )
+
+  fireEvent.click(screen.getByRole('button', { name: 'Per game' }))
+
+  expect(cellByHeader('Nikola Jokic', 'PTS')).toHaveTextContent('25.0')
+  expect(screen.getByTestId('location')).toHaveTextContent(
+    '/projections?pos=C&q=jok&sort=pts&dir=asc',
+  )
+})
+
+test('editing a control keeps heat in the query', async () => {
+  stubProjections(THREE_ROWS)
+
+  renderPage(<ProjectionsPage />, ['/projections?heat=1'])
+
+  expect(await screen.findByText('Nikola Jokic')).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Z-scores' }))
+
+  expect(screen.getByTestId('location')).toHaveTextContent(
+    '/projections?view=z&sort=z_total&heat=1',
+  )
+
+  fireEvent.change(screen.getByLabelText(/player name/i), {
+    target: { value: 'jok' },
+  })
+
+  expect(screen.getByTestId('location')).toHaveTextContent(
+    '/projections?view=z&q=jok&sort=z_total&heat=1',
+  )
+  expect(playerNames()).toEqual(['Nikola Jokic'])
+})
+
+test('an unknown weights id shows Default and stays in the url', async () => {
+  stubProjections(THREE_ROWS, [
+    {
+      id: 9,
+      name: 'Bench fouls',
+      weights: { ...DEFAULT_WEIGHTS, pf: 0 },
+      updated_at: '2026-09-22T12:00:00.000Z',
+    },
+  ])
+
+  renderPage(<ProjectionsPage />, ['/projections?view=z&weights=999'])
+
+  expect(await screen.findByText('Nikola Jokic')).toBeInTheDocument()
+  expect(screen.getByRole('combobox', { name: /weights/i })).toHaveTextContent(
+    'Default',
+  )
+  expect(
+    screen.queryByRole('button', { name: 'Weighted Z' }),
+  ).not.toBeInTheDocument()
+  expect(screen.getByTestId('location')).toHaveTextContent(
+    '/projections?view=z&weights=999',
+  )
+})
+
+test('a known weights id selects that collection', async () => {
+  stubProjections(THREE_ROWS, [
+    {
+      id: 9,
+      name: 'Bench fouls',
+      weights: { ...DEFAULT_WEIGHTS, pf: 0 },
+      updated_at: '2026-09-22T12:00:00.000Z',
+    },
+  ])
+
+  renderPage(<ProjectionsPage />, ['/projections?view=z&weights=9'])
+
+  expect(await screen.findByText('Nikola Jokic')).toBeInTheDocument()
+  expect(screen.getByRole('combobox', { name: /weights/i })).toHaveTextContent(
+    'Bench fouls',
+  )
+  expect(screen.getByRole('button', { name: 'Weighted Z' })).toBeInTheDocument()
+})
+
+function cellBackground(cell: HTMLElement): string {
+  const inline = cell.style.backgroundColor.trim()
+  if (inline) return inline
+  const computed = getComputedStyle(cell).backgroundColor.trim()
+  if (
+    computed &&
+    computed !== 'rgba(0, 0, 0, 0)' &&
+    computed !== 'transparent'
+  ) {
+    return computed
+  }
+  const styles = [...document.querySelectorAll('style')]
+    .map((node) => node.textContent ?? '')
+    .join('\n')
+  for (const className of cell.classList) {
+    const needle = `.${className}`
+    let from = 0
+    while (from < styles.length) {
+      const at = styles.indexOf(needle, from)
+      if (at === -1) break
+      const open = styles.indexOf('{', at)
+      const close = open === -1 ? -1 : styles.indexOf('}', open)
+      if (open === -1 || close === -1) break
+      const rule = styles.slice(at, close + 1)
+      const match = rule.match(/background(?:-color)?:\s*([^;]+)/i)
+      if (match?.[1]) return match[1].trim()
+      from = close + 1
+    }
+  }
+  return ''
+}
+
+test('toggling Heatmap colours a cell and writes heat=1', async () => {
+  stubProjections([
+    projectionRow({
+      id: 1,
+      full_name: 'High Scorer',
+      positions: ['C'],
+      nba_team: 'DEN',
+      pts: 2500,
+    }),
+    projectionRow({
+      id: 2,
+      full_name: 'Low Scorer',
+      positions: ['PG'],
+      nba_team: 'OKC',
+      pts: 1000,
+    }),
+  ])
+
+  renderPage(<ProjectionsPage />)
+
+  expect(await screen.findByText('High Scorer')).toBeInTheDocument()
+  expect(
+    screen.queryByRole('switch', { name: 'Heatmap' }),
+  ).not.toBeInTheDocument()
+
+  fireEvent.click(screen.getByRole('button', { name: 'Z-scores' }))
+
+  const baseCaption =
+    'Z-scores vs the top 2 rostered players (8 teams × 16 roster spots, ≥ 20 GP). TO and PF are reversed so positive is better.'
+  expect(screen.getByText(baseCaption)).toBeInTheDocument()
+  const ptsBefore = cellByHeader('High Scorer', 'PTS')
+  expect(cellBackground(ptsBefore)).toBe('')
+
+  fireEvent.click(screen.getByRole('switch', { name: 'Heatmap' }))
+
+  expect(screen.getByTestId('location')).toHaveTextContent(
+    '/projections?view=z&sort=z_total&heat=1',
+  )
+  expect(screen.getByRole('switch', { name: 'Heatmap' })).toBeChecked()
+  expect(
+    screen.getByText(
+      `${baseCaption} Heatmap: blue is above the pool mean, red is below.`,
+    ),
+  ).toBeInTheDocument()
+  expect(cellBackground(cellByHeader('High Scorer', 'PTS'))).not.toBe('')
 })

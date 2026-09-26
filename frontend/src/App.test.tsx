@@ -41,8 +41,63 @@ test('renders the projections page as the home screen', async () => {
   expect(
     await screen.findByRole('heading', { name: '2026–27 projections' }),
   ).toBeInTheDocument()
+  expect(screen.getByTestId('location')).toHaveTextContent(/^\/projections$/)
+  expect(screen.getByRole('tab', { name: 'Projections' })).toHaveAttribute(
+    'href',
+    '/projections',
+  )
   expect(fetchMock).toHaveBeenCalledWith(
     '/api/projections?source=espn&season=2027',
+  )
+})
+
+test('renders projections at /projections with that tab selected', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => [],
+    }),
+  )
+
+  renderApp(<App />, ['/projections'])
+
+  expect(
+    await screen.findByRole('heading', { name: '2026–27 projections' }),
+  ).toBeInTheDocument()
+  expect(screen.getByRole('tab', { name: 'Projections' })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  )
+  expect(screen.getByRole('tab', { name: 'Mock drafts' })).toHaveAttribute(
+    'aria-selected',
+    'false',
+  )
+  expect(screen.getByRole('tab', { name: 'Projections' })).toHaveAttribute(
+    'href',
+    '/projections',
+  )
+  expect(screen.getByTestId('location')).toHaveTextContent(/^\/projections$/)
+})
+
+test('unknown paths redirect to /projections', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => [],
+    }),
+  )
+
+  renderApp(<App />, ['/not-a-page'])
+
+  expect(
+    await screen.findByRole('heading', { name: '2026–27 projections' }),
+  ).toBeInTheDocument()
+  expect(screen.getByTestId('location')).toHaveTextContent(/^\/projections$/)
+  expect(screen.getByRole('tab', { name: 'Projections' })).toHaveAttribute(
+    'aria-selected',
+    'true',
   )
 })
 

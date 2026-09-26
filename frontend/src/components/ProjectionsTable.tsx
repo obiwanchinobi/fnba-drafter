@@ -1,5 +1,6 @@
 import { useVirtualizer, type Virtualizer } from '@tanstack/react-virtual'
 import Paper from '@mui/material/Paper'
+import SvgIcon from '@mui/material/SvgIcon'
 import Table from '@mui/material/Table'
 import TableBody from '@mui/material/TableBody'
 import TableCell from '@mui/material/TableCell'
@@ -8,12 +9,17 @@ import TableHead from '@mui/material/TableHead'
 import TableRow from '@mui/material/TableRow'
 import TableSortLabel from '@mui/material/TableSortLabel'
 import Typography from '@mui/material/Typography'
-import { useRef } from 'react'
+import { useEffect, useRef, type ComponentProps } from 'react'
 import {
   DEFAULT_PROJECTION_SEASON,
   type Dataset,
   type Projection,
 } from '../api/projections.ts'
+import {
+  CAT_Z_CAP,
+  TOTAL_Z_CAP,
+  heatBackground,
+} from '../lib/heatmap.ts'
 import {
   basisRatioParts,
   basisValue,
@@ -79,8 +85,7 @@ const COLUMNS: Column[] = [
   { id: 'player', label: 'Player', sortColumn: 'player', sticky: 'player' },
   { id: 'pos', label: 'Pos', sortColumn: 'pos', sticky: 'pos' },
   { id: 'team', label: 'Team', sortColumn: 'team', sticky: 'team' },
-  { id: 'inj', label: 'Inj' },
-  { id: 'rank', label: 'Rank', sortColumn: 'rank', numeric: true },
+  { id: 'rank', label: 'ESPN Rank', sortColumn: 'rank', numeric: true },
   { id: 'z_total', label: 'Total Z', sortColumn: 'z_total', numeric: true, zOnly: true },
   {
     id: 'z_weighted',
@@ -125,6 +130,7 @@ const STICKY_LEFT = { player: 0, pos: 168, team: 240 } as const
 const STICKY_MIN_WIDTH = { player: 168, pos: 72, team: 64 } as const
 
 export const ROW_HEIGHT = 33
+export const Z_ROW_HEIGHT = 48
 
 // virtual-core's default rect read is offsetHeight, which is 0 without layout.
 function observeContainerRect(
@@ -341,6 +347,28 @@ function tableAriaLabel(
   return withBasis
 }
 
+// Stored z is already signed so positive is better, including reversed TO and PF.
+function zHeatBackground(
+  row: Projection,
+  columnId: string,
+  zScores: ZScoresResult | null,
+  weighted: WeightedColumns | null,
+): string | undefined {
+  if (isScoredCat(columnId)) {
+    return heatBackground(
+      zScores?.scores.get(row.id)?.cats[columnId] ?? null,
+      CAT_Z_CAP,
+    )
+  }
+  if (columnId === 'z_total') {
+    return heatBackground(zScores?.scores.get(row.id)?.total ?? null, TOTAL_Z_CAP)
+  }
+  if (columnId === 'z_weighted') {
+    return heatBackground(weighted?.totals.get(row.id) ?? null, TOTAL_Z_CAP)
+  }
+  return undefined
+}
+
 function formatCell(
   row: Projection,
   columnId: string,
@@ -369,8 +397,6 @@ function formatCell(
       return row.positions.join(', ')
     case 'team':
       return row.nba_team
-    case 'inj':
-      return row.injury_status ?? '—'
     case 'rank':
       if (dataset === 'actual' || row.espn_roto_rank == null) return '—'
       return String(row.espn_roto_rank)
@@ -424,6 +450,32 @@ function formatCell(
   }
 }
 
+function injuryIcon(status: string | null) {
+  if (status !== 'OUT' && status !== 'DAY_TO_DAY') return null
+
+  const out = status === 'OUT'
+  const label = out ? 'Out' : 'Day to day'
+  // SvgIcon defaults to aria-hidden, which would hide the accessible name.
+  // React's SVG types also omit the global title attribute that it forwards.
+  const labelled = { title: label } as ComponentProps<typeof SvgIcon>
+  return (
+    <SvgIcon
+      role="img"
+      aria-label={label}
+      aria-hidden={false}
+      {...labelled}
+      sx={{
+        ml: 0.5,
+        verticalAlign: 'text-bottom',
+        fontSize: 16,
+        color: out ? 'error.main' : 'warning.main',
+      }}
+    >
+      <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" />
+    </SvgIcon>
+  )
+}
+
 type ProjectionsTableProps = {
   rows: Projection[]
   sortBy: SortColumn | null
@@ -435,6 +487,7 @@ type ProjectionsTableProps = {
   basis?: Basis
   zScores?: ZScoresResult | null
   weighted?: WeightedColumns | null
+  heatmap?: boolean
 }
 
 export default function ProjectionsTable({
@@ -448,6 +501,7 @@ export default function ProjectionsTable({
   basis = 'per_game',
   zScores = null,
   weighted = null,
+  heatmap = false,
 }: ProjectionsTableProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const visibleColumns = COLUMNS.filter(
@@ -460,10 +514,13 @@ export default function ProjectionsTable({
   const virtualizer = useVirtualizer({
     count: rows.length,
     getScrollElement: () => containerRef.current,
-    estimateSize: () => ROW_HEIGHT,
+    estimateSize: () => (view === 'z' ? Z_ROW_HEIGHT : ROW_HEIGHT),
     overscan: 10,
     observeElementRect: observeContainerRect,
   })
+  useEffect(() => {
+    virtualizer.measure()
+  }, [view, virtualizer])
   const virtualItems = rows.length > 0 ? virtualizer.getVirtualItems() : []
   const paddingTop = virtualItems[0]?.start ?? 0
   const paddingBottom =
@@ -542,12 +599,17 @@ export default function ProjectionsTable({
                       const estimated =
                         dataset === 'projection' &&
                         (row.estimated_stat_keys ?? []).includes(column.id)
+                      const heat =
+                        view === 'z' && heatmap
+                          ? zHeatBackground(row, column.id, zScores, weighted)
+                          : undefined
                       return (
                         <TableCell
                           key={column.id}
                           sx={{
                             ...cellSx(column, false),
                             ...(estimated ? { fontStyle: 'italic' } : {}),
+                            ...(heat != null ? { backgroundColor: heat } : {}),
                           }}
                           title={
                             estimated
@@ -564,6 +626,28 @@ export default function ProjectionsTable({
                             basis,
                             weighted,
                           )}
+                          {view === 'z' && isScoredCat(column.id) ? (
+                            <Typography
+                              component="span"
+                              variant="caption"
+                              color="text.secondary"
+                              data-testid="basis-value"
+                              sx={{ display: 'block' }}
+                            >
+                              {formatCell(
+                                row,
+                                column.id,
+                                dataset,
+                                'values',
+                                zScores,
+                                basis,
+                                weighted,
+                              )}
+                            </Typography>
+                          ) : null}
+                          {column.id === 'player'
+                            ? injuryIcon(row.injury_status)
+                            : null}
                           {showDeltaCaption
                             ? estimatedDeltaCaption(row, column.id)
                             : null}

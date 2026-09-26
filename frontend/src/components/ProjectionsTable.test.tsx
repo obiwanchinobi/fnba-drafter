@@ -4,10 +4,18 @@ import { ThemeProvider } from '@mui/material/styles'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import type { ReactElement } from 'react'
 import type { Projection } from '../api/projections.ts'
+import {
+  CAT_Z_CAP,
+  TOTAL_Z_CAP,
+  heatBackground,
+} from '../lib/heatmap.ts'
 import { SCORED_CAT_IDS, type ScoredCat } from '../lib/statBasis.ts'
 import type { ZScoresResult } from '../lib/zScores.ts'
 import theme from '../theme.ts'
-import ProjectionsTable, { ROW_HEIGHT } from './ProjectionsTable.tsx'
+import ProjectionsTable, {
+  ROW_HEIGHT,
+  Z_ROW_HEIGHT,
+} from './ProjectionsTable.tsx'
 
 function renderTable(ui: ReactElement) {
   return render(<ThemeProvider theme={theme}>{ui}</ThemeProvider>)
@@ -176,15 +184,91 @@ test('exposes sort labels and reports the clicked column', () => {
     />,
   )
 
-  for (const label of ['Player', 'Team', 'Pos', 'Rank', 'GP', 'MIN', 'PTS']) {
+  for (const label of ['Player', 'Team', 'Pos', 'ESPN Rank', 'GP', 'MIN', 'PTS']) {
     expect(screen.getByRole('button', { name: label })).toBeInTheDocument()
   }
 
   fireEvent.click(screen.getByRole('button', { name: /^PTS$/ }))
   expect(onSort).toHaveBeenCalledWith('pts')
 
-  fireEvent.click(screen.getByRole('button', { name: /^Rank$/ }))
+  fireEvent.click(screen.getByRole('button', { name: /^ESPN Rank$/ }))
   expect(onSort).toHaveBeenCalledWith('rank')
+})
+
+test('shows an injury icon beside the name and no Inj column', () => {
+  const rows: Projection[] = [
+    { ...jokic, id: 1, full_name: 'Out Player', injury_status: 'OUT' },
+    {
+      ...jokic,
+      id: 2,
+      player_id: 2,
+      full_name: 'Day To Day Player',
+      injury_status: 'DAY_TO_DAY',
+    },
+    {
+      ...jokic,
+      id: 3,
+      player_id: 3,
+      full_name: 'Active Player',
+      injury_status: 'ACTIVE',
+    },
+    {
+      ...jokic,
+      id: 4,
+      player_id: 4,
+      full_name: 'Healthy Player',
+      injury_status: null,
+    },
+    {
+      ...jokic,
+      id: 5,
+      player_id: 5,
+      full_name: 'Unknown Player',
+      injury_status: 'QUESTIONABLE',
+    },
+  ]
+
+  renderTable(
+    <ProjectionsTable
+      rows={rows}
+      sortBy={null}
+      sortDirection="desc"
+      onSort={() => {}}
+      emptyMessage="No projections yet. Use Update from source."
+    />,
+  )
+
+  expect(
+    screen.queryByRole('columnheader', { name: 'Inj' }),
+  ).not.toBeInTheDocument()
+
+  const outCell = cellText('Out Player', 'Player')
+  expect(outCell.textContent).toBe('Out Player')
+  const outIcon = within(outCell).getByRole('img', { name: 'Out' })
+  expect(outIcon).toHaveAttribute('title', 'Out')
+  expect(outIcon).toHaveStyle({
+    color: theme.palette.error.main,
+    fontSize: '16px',
+  })
+
+  const dayCell = cellText('Day To Day Player', 'Player')
+  expect(dayCell.textContent).toBe('Day To Day Player')
+  const dayIcon = within(dayCell).getByRole('img', { name: 'Day to day' })
+  expect(dayIcon).toHaveAttribute('title', 'Day to day')
+  expect(dayIcon).toHaveStyle({
+    color: theme.palette.warning.main,
+    fontSize: '16px',
+  })
+
+  expect(
+    within(cellText('Active Player', 'Player')).queryByRole('img'),
+  ).toBeNull()
+  expect(
+    within(cellText('Healthy Player', 'Player')).queryByRole('img'),
+  ).toBeNull()
+  expect(
+    within(cellText('Unknown Player', 'Player')).queryByRole('img'),
+  ).toBeNull()
 })
 
 test('estimated OREB cell is italic with the FNBA estimate title', () => {
@@ -409,7 +493,7 @@ test('actuals rank is an em dash and estimated_stat_keys do not italicize', () =
   const headers = screen
     .getAllByRole('columnheader')
     .map((header) => header.textContent)
-  const rankIndex = headers.indexOf('Rank')
+  const rankIndex = headers.indexOf('ESPN Rank')
   const orebIndex = headers.indexOf('OREB')
   expect(rankIndex).toBeGreaterThan(-1)
   expect(orebIndex).toBeGreaterThan(-1)
@@ -481,9 +565,72 @@ test('z cells render signed two-decimal z and an em dash for null', () => {
   const ptsIndex = headers.indexOf('PTS')
   const toIndex = headers.indexOf('TO')
   const orebIndex = headers.indexOf('OREB')
-  expect(cells[ptsIndex]).toHaveTextContent('+1.23')
-  expect(cells[toIndex]).toHaveTextContent('-0.45')
-  expect(cells[orebIndex]).toHaveTextContent('—')
+  expect(cells[ptsIndex]).toHaveTextContent(/^\+1\.23/)
+  expect(cells[toIndex]).toHaveTextContent(/^-0\.45/)
+  expect(cells[orebIndex]).toHaveTextContent(/^—/)
+})
+
+test('z view shows the basis value under each scored z-score', () => {
+  const { rerender } = renderTable(
+    <ProjectionsTable
+      rows={[jokic]}
+      sortBy={null}
+      sortDirection="desc"
+      onSort={() => {}}
+      emptyMessage="No projections yet. Use Update from source."
+      view="z"
+      basis="per_game"
+      zScores={zViewScores}
+    />,
+  )
+
+  const pts = cellText('Nikola Jokic', 'PTS')
+  expect(pts.childNodes[0]?.textContent).toBe('+1.23')
+  expect(within(pts).getByTestId('basis-value')).toHaveTextContent('25.0')
+
+  const oreb = cellText('Nikola Jokic', 'OREB')
+  expect(within(oreb).getByTestId('basis-value')).toHaveTextContent('—')
+
+  for (const header of ['Total Z', 'ESPN Rank', 'GP', 'MIN']) {
+    expect(
+      within(cellText('Nikola Jokic', header)).queryByTestId('basis-value'),
+    ).not.toBeInTheDocument()
+  }
+
+  rerender(
+    <ThemeProvider theme={theme}>
+      <ProjectionsTable
+        rows={[jokic]}
+        sortBy={null}
+        sortDirection="desc"
+        onSort={() => {}}
+        emptyMessage="No projections yet. Use Update from source."
+        view="z"
+        basis="total"
+        zScores={zViewScores}
+      />
+    </ThemeProvider>,
+  )
+
+  expect(
+    within(cellText('Nikola Jokic', 'PTS')).getByTestId('basis-value').textContent,
+  ).toBe('2050')
+})
+
+test('values view does not render a basis value under cells', () => {
+  renderTable(
+    <ProjectionsTable
+      rows={[jokic]}
+      sortBy={null}
+      sortDirection="desc"
+      onSort={() => {}}
+      emptyMessage="No projections yet. Use Update from source."
+      view="values"
+      basis="per_game"
+    />,
+  )
+
+  expect(screen.queryByTestId('basis-value')).not.toBeInTheDocument()
 })
 
 test('Total Z header is absent in values view and present and sortable in z view', () => {
@@ -521,7 +668,7 @@ test('Total Z header is absent in values view and present and sortable in z view
   const headers = screen
     .getAllByRole('columnheader')
     .map((header) => header.textContent)
-  expect(headers.indexOf('Total Z')).toBe(headers.indexOf('Rank') + 1)
+  expect(headers.indexOf('Total Z')).toBe(headers.indexOf('ESPN Rank') + 1)
   fireEvent.click(screen.getByRole('button', { name: 'Total Z' }))
   expect(onSort).toHaveBeenCalledWith('z_total')
 })
@@ -797,6 +944,37 @@ function projectionCopy(id: number): Projection {
   }
 }
 
+function cellBackground(cell: HTMLElement): string {
+  const inline = cell.style.backgroundColor.trim()
+  if (inline) return inline
+  const css = injectedRuleText(cell)
+  const match = css.match(/background(?:-color)?:\s*([^;]+)/i)
+  if (match?.[1]) return match[1].trim()
+  const computed = getComputedStyle(cell).backgroundColor.trim()
+  if (
+    computed &&
+    computed !== 'rgba(0, 0, 0, 0)' &&
+    computed !== 'transparent'
+  ) {
+    return computed
+  }
+  return ''
+}
+
+function expectHeat(
+  cell: HTMLElement,
+  z: number | null,
+  cap: number,
+) {
+  const expected = heatBackground(z, cap)
+  expect(expected).toBeTruthy()
+  expect(cellBackground(cell)).toBe(expected)
+}
+
+function expectUnpainted(cell: HTMLElement) {
+  expect(cellBackground(cell)).toBe('')
+}
+
 function injectedRuleText(element: Element): string {
   const styles = [...document.querySelectorAll('style')]
     .map((node) => node.textContent ?? '')
@@ -846,6 +1024,40 @@ test('mounts only the viewport window for 300 rows', () => {
       0,
     )
   expect(spacerHeight + dataRows.length * ROW_HEIGHT).toBe(300 * ROW_HEIGHT)
+})
+
+test('mounts only the viewport window for 300 rows in z view', () => {
+  const rows = Array.from({ length: 300 }, (_, index) => projectionCopy(index + 1))
+
+  renderTable(
+    <ProjectionsTable
+      rows={rows}
+      sortBy={null}
+      sortDirection="desc"
+      onSort={() => {}}
+      emptyMessage="No projections yet. Use Update from source."
+      view="z"
+      zScores={zViewScores}
+    />,
+  )
+
+  const bodyRows = screen.getByRole('table').querySelectorAll('tbody tr')
+  expect(bodyRows.length).toBeLessThan(300)
+  expect(screen.getByText('Player 1')).toBeInTheDocument()
+  expect(screen.queryByText('Player 300')).not.toBeInTheDocument()
+
+  const dataRows = [...bodyRows].filter(
+    (row) => row.getAttribute('aria-hidden') !== 'true',
+  )
+  const spacerHeight = [...bodyRows]
+    .filter((row) => row.getAttribute('aria-hidden') === 'true')
+    .reduce(
+      (sum, row) => sum + Number.parseFloat((row as HTMLElement).style.height || '0'),
+      0,
+    )
+  expect(spacerHeight + dataRows.length * Z_ROW_HEIGHT).toBe(
+    300 * Z_ROW_HEIGHT,
+  )
 })
 
 test('keeps a bounded scroll container and a sticky header', () => {
@@ -1005,4 +1217,98 @@ test('z view aria-label includes the collection name when weighted', () => {
       name: 'Player projections 2026-27, z-scores, weighted by Bench fouls',
     }),
   ).toBeInTheDocument()
+})
+
+test('heatmap colours scored cats and z totals from the fixture z', () => {
+  const ptsZ = zViewScores.scores.get(1)?.cats.pts ?? null
+  const toZ = zViewScores.scores.get(1)?.cats.to ?? null
+  const orebZ = zViewScores.scores.get(1)?.cats.oreb ?? null
+  const astZ = zViewScores.scores.get(1)?.cats.ast ?? null
+  const totalZ = zViewScores.scores.get(1)?.total ?? null
+  expect(ptsZ).toBe(1.23)
+  expect(toZ).toBe(-0.45)
+  expect(orebZ).toBeNull()
+  expect(astZ).toBe(0)
+  expect(totalZ).toBe(1.23)
+
+  const injured = { ...jokic, injury_status: 'OUT' }
+  const weightedZ = -4.5
+
+  renderTable(
+    <ProjectionsTable
+      rows={[injured]}
+      sortBy={null}
+      sortDirection="desc"
+      onSort={() => {}}
+      emptyMessage="No projections yet. Use Update from source."
+      view="z"
+      zScores={zViewScores}
+      heatmap
+      weighted={{
+        name: 'Bench fouls',
+        totals: new Map<number, number | null>([[1, weightedZ]]),
+        rankDelta: new Map<number, number | null>([[1, 2]]),
+      }}
+    />,
+  )
+
+  const pts = cellText('Nikola Jokic', 'PTS')
+  const to = cellText('Nikola Jokic', 'TO')
+  expectHeat(pts, ptsZ, CAT_Z_CAP)
+  expectHeat(to, toZ, CAT_Z_CAP)
+  expect(cellBackground(pts)).not.toBe(cellBackground(to))
+  expect(within(pts).getByTestId('basis-value')).toHaveTextContent('25.0')
+  expectUnpainted(cellText('Nikola Jokic', 'OREB'))
+  expectUnpainted(cellText('Nikola Jokic', 'AST'))
+  expectHeat(cellText('Nikola Jokic', 'Total Z'), totalZ, TOTAL_Z_CAP)
+  expectHeat(cellText('Nikola Jokic', 'Weighted Z'), weightedZ, TOTAL_Z_CAP)
+  expectUnpainted(cellText('Nikola Jokic', 'Δ Rank'))
+  expectUnpainted(cellText('Nikola Jokic', 'ESPN Rank'))
+  expectUnpainted(cellText('Nikola Jokic', 'GP'))
+  expectUnpainted(cellText('Nikola Jokic', 'MIN'))
+  const player = cellText('Nikola Jokic', 'Player')
+  expect(within(player).getByRole('img', { name: 'Out' })).toBeInTheDocument()
+  expect(cellBackground(player)).not.toBe(cellBackground(pts))
+})
+
+test('heatmap off leaves z cells unpainted', () => {
+  renderTable(
+    <ProjectionsTable
+      rows={[jokic]}
+      sortBy={null}
+      sortDirection="desc"
+      onSort={() => {}}
+      emptyMessage="No projections yet. Use Update from source."
+      view="z"
+      zScores={zViewScores}
+      heatmap={false}
+    />,
+  )
+
+  expectUnpainted(cellText('Nikola Jokic', 'PTS'))
+  expectUnpainted(cellText('Nikola Jokic', 'TO'))
+  expectUnpainted(cellText('Nikola Jokic', 'Total Z'))
+  expect(within(cellText('Nikola Jokic', 'PTS')).getByTestId('basis-value')).toHaveTextContent(
+    '25.0',
+  )
+})
+
+test('values view ignores heatmap', () => {
+  renderTable(
+    <ProjectionsTable
+      rows={[jokic]}
+      sortBy={null}
+      sortDirection="desc"
+      onSort={() => {}}
+      emptyMessage="No projections yet. Use Update from source."
+      view="values"
+      zScores={zViewScores}
+      heatmap
+    />,
+  )
+
+  expect(cellText('Nikola Jokic', 'PTS')).toHaveTextContent('25.0')
+  expectUnpainted(cellText('Nikola Jokic', 'PTS'))
+  expectUnpainted(cellText('Nikola Jokic', 'TO'))
+  expect(screen.queryByTestId('basis-value')).not.toBeInTheDocument()
 })

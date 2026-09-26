@@ -391,3 +391,38 @@ test('New weights and Edit weights call their callbacks', () => {
   expect(onCreateWeights).toHaveBeenCalledTimes(1)
   expect(onEditWeights).toHaveBeenCalledTimes(1)
 })
+
+test('heatmap switch is absent in values view and present in z view', () => {
+  const { rerender } = renderToolbar(
+    <ProjectionsToolbar source="espn" {...idleHandlers} view="values" />,
+  )
+
+  expect(
+    screen.queryByRole('switch', { name: 'Heatmap' }),
+  ).not.toBeInTheDocument()
+
+  rerender(
+    <ThemeProvider theme={theme}>
+      <ProjectionsToolbar source="espn" {...idleHandlers} view="z" />
+    </ThemeProvider>,
+  )
+
+  expect(screen.getByRole('switch', { name: 'Heatmap' })).toBeInTheDocument()
+})
+
+test('toggling Heatmap calls the handler with true', () => {
+  const onHeatmapChange = vi.fn()
+
+  renderToolbar(
+    <ProjectionsToolbar
+      source="espn"
+      {...idleHandlers}
+      view="z"
+      heatmap={false}
+      onHeatmapChange={onHeatmapChange}
+    />,
+  )
+
+  fireEvent.click(screen.getByRole('switch', { name: 'Heatmap' }))
+  expect(onHeatmapChange).toHaveBeenCalledWith(true)
+})

@@ -1,9 +1,11 @@
 import Button from '@mui/material/Button'
 import FormControl from '@mui/material/FormControl'
+import FormControlLabel from '@mui/material/FormControlLabel'
 import InputLabel from '@mui/material/InputLabel'
 import MenuItem from '@mui/material/MenuItem'
 import Select from '@mui/material/Select'
 import Stack from '@mui/material/Stack'
+import Switch from '@mui/material/Switch'
 import TextField from '@mui/material/TextField'
 import ToggleButton from '@mui/material/ToggleButton'
 import ToggleButtonGroup from '@mui/material/ToggleButtonGroup'
@@ -98,6 +100,8 @@ type ProjectionsToolbarProps = {
   onWeightSetChange?: (id: number | 'default') => void
   onCreateWeights?: () => void
   onEditWeights?: () => void
+  heatmap?: boolean
+  onHeatmapChange?: (on: boolean) => void
 }
 
 export default function ProjectionsToolbar({
@@ -123,6 +127,8 @@ export default function ProjectionsToolbar({
   onWeightSetChange = () => {},
   onCreateWeights = () => {},
   onEditWeights = () => {},
+  heatmap = false,
+  onHeatmapChange,
 }: ProjectionsToolbarProps) {
   const sourceLabel = SOURCE_LABELS[source] ?? source
   const teamOptions = nbaTeamOptions(extraTeams)
@@ -239,6 +245,18 @@ export default function ProjectionsToolbar({
             ))}
           </Select>
         </FormControl>
+      ) : null}
+      {view === 'z' ? (
+        <FormControlLabel
+          control={
+            <Switch
+              size="small"
+              checked={heatmap}
+              onChange={(_event, checked) => onHeatmapChange?.(checked)}
+            />
+          }
+          label="Heatmap"
+        />
       ) : null}
       {view === 'z' ? (
         <Button size="small" variant="outlined" onClick={onCreateWeights}>
