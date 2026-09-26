@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_26_090000) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_26_110000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -135,7 +135,6 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_26_090000) do
   end
 
   create_table "weight_search_runs", force: :cascade do |t|
-    t.bigint "weight_search_id", null: false
     t.integer "user_slot", null: false
     t.string "weight_set_name", null: false
     t.jsonb "weights", null: false
@@ -148,19 +147,18 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_26_090000) do
     t.jsonb "picks", null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
-    t.index ["weight_search_id", "user_slot"], name: "index_weight_search_runs_on_weight_search_id_and_user_slot", unique: true
-    t.index ["weight_search_id"], name: "index_weight_search_runs_on_weight_search_id"
-  end
-
-  create_table "weight_searches", force: :cascade do |t|
-    t.integer "budget", null: false
-    t.bigint "seed", null: false
-    t.string "source", null: false
-    t.integer "season", null: false
-    t.datetime "projection_imported_at", null: false
-    t.string "user_team", null: false
-    t.datetime "created_at", null: false
-    t.datetime "updated_at", null: false
+    t.integer "budget"
+    t.bigint "seed"
+    t.string "source"
+    t.integer "season"
+    t.datetime "projection_imported_at"
+    t.decimal "win_rate"
+    t.decimal "mean_margin"
+    t.decimal "worst_margin"
+    t.jsonb "margins"
+    t.integer "scenario_count"
+    t.decimal "noise_sd"
+    t.index ["user_slot"], name: "index_weight_search_runs_on_user_slot", unique: true
   end
 
   create_table "weight_sets", force: :cascade do |t|
@@ -176,5 +174,4 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_26_090000) do
   add_foreign_key "mock_draft_runs", "mock_drafts"
   add_foreign_key "player_projections", "players"
   add_foreign_key "player_season_stats", "players"
-  add_foreign_key "weight_search_runs", "weight_searches"
 end

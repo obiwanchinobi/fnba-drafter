@@ -1,10 +1,15 @@
-# One Team Chino draft slot of a saved WeightSearch: the winning weights (a
-# snapshot, since "Draft slot N" collections stay editable), its score, draft
-# order, roto standings and picks (jsonb in the mock_draft_picks column shape).
+# One Team Chino draft slot's saved WeightSearch, one row per slot: the search
+# inputs (budget, seed, projection snapshot, scenario count and noise scale),
+# the winning weights (a snapshot, since "Draft slot N" collections stay
+# editable), the scenario scores (win rate, mean and worst margin, and every
+# scenario's margin, base scenario first) and the base scenario's rank, points,
+# margin, draft order, roto standings and picks (jsonb in the mock_draft_picks
+# column shape).
 class WeightSearchRun < ApplicationRecord
   attribute :weights, WeightSet::WeightsType.new
+  attribute :margins, WeightSet::WeightsType.new
   attribute :standings, MockDraftRun::StandingsType.new
   attribute :picks, MockDraftRun::StandingsType.new
 
-  belongs_to :weight_search, inverse_of: :runs
+  validates :user_slot, inclusion: { in: 1..League::TEAM_COUNT }
 end
