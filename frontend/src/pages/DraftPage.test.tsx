@@ -251,6 +251,47 @@ test('marks drafted players with the pick and greys their row', async () => {
   ).toBeInTheDocument()
 })
 
+test('shows the order strip and whose pick it is, then updates after a refresh', async () => {
+  const refreshed = draftState({
+    refreshed_at: '2026-09-26T11:07:00Z',
+    picks: [JOKIC_PICK, SGA_PICK],
+  })
+  stubDraft({ draft: draftState(), refresh: () => jsonBody(refreshed) })
+
+  renderPage(<DraftPage />)
+
+  expect(
+    await screen.findByText(
+      'Pick 2 of 136, round 1: Team Chino. You are on the clock.',
+    ),
+  ).toBeInTheDocument()
+  const chips = within(
+    screen.getByRole('list', { name: 'Draft order' }),
+  ).getAllByRole('listitem')
+  expect(chips.map((chip) => chip.textContent)).toEqual([
+    '1 Trust in Pizza',
+    '2 Team Chino',
+    '3 Team 3',
+    '4 Team 4',
+    '5 Team 5',
+    '6 Team 6',
+    '7 Team 7',
+    '8 Team 8',
+  ])
+  expect(chips[1]).toHaveAttribute('data-on-clock', 'true')
+  expect(chips[1]).toHaveAttribute('data-user', 'true')
+
+  fireEvent.click(screen.getByRole('button', { name: 'Refresh picks' }))
+
+  expect(
+    await screen.findByText(
+      'Pick 3 of 136, round 1: Team 3. Your next pick is #15 (12 picks away).',
+    ),
+  ).toBeInTheDocument()
+  expect(chips[2]).toHaveAttribute('data-on-clock', 'true')
+  expect(chips[1]).not.toHaveAttribute('data-on-clock')
+})
+
 test('opens on the z view sorted by Total Z', async () => {
   stubDraft({ draft: draftState() })
 
