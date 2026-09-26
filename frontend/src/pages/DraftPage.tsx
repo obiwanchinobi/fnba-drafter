@@ -6,6 +6,8 @@ import {
   type DraftState,
 } from '../api/draft.ts'
 import DraftPanel from '../components/DraftPanel.tsx'
+import DraftRosterSummary from '../components/DraftRosterSummary.tsx'
+import { TEAM_COUNT } from '../lib/league.ts'
 import ProjectionsPage from './ProjectionsPage.tsx'
 
 export default function DraftPage() {
@@ -65,7 +67,15 @@ export default function DraftPage() {
           onRefresh={handleRefresh}
           hideDrafted={hideDrafted}
           onHideDraftedChange={setHideDrafted}
-        />
+        >
+          {draft ? (
+            <DraftRosterSummary
+              picks={draft.picks}
+              userEspnTeamId={draft.user_espn_team_id}
+              round={Math.floor(draft.picks.length / TEAM_COUNT) + 1}
+            />
+          ) : null}
+        </DraftPanel>
       }
       drafted={drafted}
       hideDrafted={hideDrafted}

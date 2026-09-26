@@ -133,6 +133,20 @@ const SGA_PICK: DraftPick = {
   injury_status: null,
 }
 
+const TATUM_PICK: DraftPick = {
+  overall_pick: 2,
+  round: 1,
+  slot: 2,
+  team: 'Team Chino',
+  espn_team_id: 5,
+  espn_player_id: 4065648,
+  player_id: 3,
+  full_name: 'Jayson Tatum',
+  positions: ['SF', 'PF'],
+  nba_team: 'BOS',
+  injury_status: null,
+}
+
 function draftState(overrides: Partial<DraftState> = {}): DraftState {
   return {
     season: 2027,
@@ -385,4 +399,29 @@ test('a 503 from refresh shows the ESPN credentials message', async () => {
     /Log in to ESPN in Chrome/,
   )
   expect(rowFor('Nikola Jokic')).not.toHaveAttribute('data-drafted')
+})
+
+test('shows position counts and drafted total for Chino picks, updating after a refresh', async () => {
+  const refreshed = draftState({
+    refreshed_at: '2026-09-26T11:07:00Z',
+    picks: [JOKIC_PICK, TATUM_PICK, { ...SGA_PICK, overall_pick: 3, slot: 3 }],
+  })
+  stubDraft({
+    draft: draftState({ picks: [JOKIC_PICK, TATUM_PICK] }),
+    refresh: () => jsonBody(refreshed),
+  })
+
+  renderPage(<DraftPage />)
+
+  expect(await screen.findByText('Drafted 1 / 17')).toBeInTheDocument()
+  const chips = () =>
+    within(screen.getByRole('list', { name: 'Roster positions' }))
+      .getAllByRole('listitem')
+      .map((chip) => chip.textContent)
+  expect(chips()).toEqual(['PG 0', 'SG 0', 'SF 1', 'PF 1', 'C 0'])
+
+  fireEvent.click(screen.getByRole('button', { name: 'Refresh picks' }))
+
+  expect(await screen.findByText('Drafted 2 / 17')).toBeInTheDocument()
+  expect(chips()).toEqual(['PG 1', 'SG 0', 'SF 1', 'PF 1', 'C 0'])
 })
