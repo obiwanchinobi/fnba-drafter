@@ -29,7 +29,8 @@ class WeightHillClimb
   end
 
   # Starts from equal weights and returns the best evaluation seen.
-  # Ties on the objective move `current` but never replace `best`.
+  # Ties on the objective move `current` but never replace `best`. A restart or
+  # any improvement on `current` resets the plateau count.
   def best_for(user_slot, budget)
     order = MockDraft.draft_order_for(user_slot)
     current = evaluate(order, WeightSet::CATEGORIES.index_with { 1.0 })
@@ -38,13 +39,10 @@ class WeightHillClimb
     (budget - 1).times do
       restart = stale >= PLATEAU_RESTART
       candidate = evaluate(order, restart ? random_weights : perturb(current[:weights]))
+      # `current` never beats `best`, so beating `best` also resets `stale`.
+      stale = restart || better?(candidate, current) ? 0 : stale + 1
       current = candidate if restart || !better?(current, candidate)
-      if better?(candidate, best)
-        best = candidate
-        stale = 0
-      else
-        stale = restart ? 0 : stale + 1
-      end
+      best = candidate if better?(candidate, best)
     end
     best.merge(draft_order: order)
   end

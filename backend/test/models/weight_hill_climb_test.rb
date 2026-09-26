@@ -110,6 +110,43 @@ class WeightHillClimbTest < ActiveSupport::TestCase
     assert_equal best[:roto_points], chino_row(best[:standings])["roto_points"]
   end
 
+  # Equal weights score best; perturbing them only scores worse, so the climb
+  # restarts after PLATEAU_RESTART. After that restart every perturbation
+  # improves by one but never reaches the global best.
+  class SteadyAfterRestartClimb < WeightHillClimb
+    attr_reader :restarts
+
+    def initialize(rng)
+      @rng = rng
+      @restarts = 0
+      @evaluations = 0
+    end
+
+    private
+      def random_weights
+        @restarts += 1
+        @since_restart = 0
+        super
+      end
+
+      def evaluate(_order, weights)
+        @evaluations += 1
+        mean_margin =
+          if @evaluations == 1 then 0
+          elsif @restarts.zero? then -2_000
+          else -1_000 + (@since_restart += 1)
+          end
+        { win_rate: @evaluations == 1 ? 1.0 : 0.0, mean_margin: mean_margin, worst_margin: mean_margin, weights: weights }
+      end
+  end
+
+  test "a restart that keeps improving is not abandoned after PLATEAU_RESTART evaluations" do
+    stub = SteadyAfterRestartClimb.new(Random.new(SEED))
+    stub.best_for(3, 1 + (3 * WeightHillClimb::PLATEAU_RESTART))
+
+    assert_equal 1, stub.restarts
+  end
+
   private
     def climb
       projections = espn_projections
